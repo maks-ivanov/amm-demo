@@ -2,14 +2,14 @@ from time import time, sleep
 
 from algosdk import account, encoding
 from algosdk.logic import get_application_address
-from auction.operations import createAuctionApp, setupAuctionApp, placeBid, closeAuction
-from auction.util import (
+from amm.operations import createAmmApp, setupAmmApp, supply, withdraw
+from amm.util import (
     getBalances,
     getAppGlobalState,
     getLastBlockTimestamp,
 )
-from auction.testing.setup import getAlgodClient
-from auction.testing.resources import (
+from amm.testing.setup import getAlgodClient
+from amm.testing.resources import (
     getTemporaryAccount,
     optInToAsset,
     createDummyAsset,
@@ -21,88 +21,93 @@ def simple_auction():
 
     print("Alice is generating temporary accounts...")
     creator = getTemporaryAccount(client)
-    seller = getTemporaryAccount(client)
+    supplier = getTemporaryAccount(client)
 
-    print("Alice is generating an example NFT...")
-    nftAmount = 1
-    nftID = createDummyAsset(client, nftAmount, seller)
-    print("The NFT ID is:", nftID)
-    startTime = int(time()) + 10  # start time is 10 seconds in the future
-    endTime = startTime + 30  # end time is 30 seconds after start
-    reserve = 1_000_000  # 1 Algo
-    increment = 100_000  # 0.1 Algo
+    print("Alice is generating example tokens...")
+    tokenAAmount = 10 ** 13
+    tokenBAmount = 10 ** 13
+    tokenA = createDummyAsset(client, tokenBAmount, creator)
+    tokenB = createDummyAsset(client, tokenBAmount, creator)
+    poolToken = createDummyAsset(client, tokenAAmount, creator)
+    print("TokenA id is:", tokenA)
+    print("TokenB id is:", tokenB)
+    print("Pool token id is:", poolToken)
 
     print(
-        "Alice is creating auction smart contract that lasts 30 seconds to auction off NFT..."
+        "Alice is creating AMM that swaps between token A and token B..."
     )
-    appID = createAuctionApp(
-        client=client,
-        sender=creator,
-        seller=seller.getAddress(),
-        nftID=nftID,
-        startTime=startTime,
-        endTime=endTime,
-        reserve=reserve,
-        minBidIncrement=increment,
-    )
-    print("Alice is setting up and funding NFT auction...")
-    setupAuctionApp(
+    appID = createAmmApp(client=client, sender=creator, tokenA=tokenA, tokenB=tokenB, poolToken=poolToken, feeBps=30)
+
+    print("Alice is setting up and funding amm...")
+    setupAmmApp(
         client=client,
         appID=appID,
         funder=creator,
-        nftHolder=seller,
-        nftID=nftID,
-        nftAmount=nftAmount,
+        tokenA=tokenA,
+        tokenB=tokenB,
+        poolToken=poolToken,
+        poolTokenQty=tokenAAmount,
     )
 
-    sellerAlgosBefore = getBalances(client, seller.getAddress())[0]
+    creatorBalancesBefore = getBalances(client, creator.getAddress())
+    ammBalancesBefore = getBalances(client, get_application_address(appID))
 
-    print("Alice's algo balance: ", sellerAlgosBefore, " algos")
+    print("Alice's balances: ", creatorBalancesBefore)
+    print("AMM's balances: ", ammBalancesBefore)
 
-    bidder = getTemporaryAccount(client)
+    print("Supplying AMM with token A and token B")
+    supply(client=client, appID=appID, qA=500_000, qB=100_000_000, supplier=creator)
+    ammBalancesSupplied = getBalances(client, get_application_address(appID))
+    print("AMM's balances: ", ammBalancesSupplied)
 
-    _, lastRoundTime = getLastBlockTimestamp(client)
-    if lastRoundTime < startTime + 5:
-        sleep(startTime + 5 - lastRoundTime)
-    actualAppBalancesBefore = getBalances(client, get_application_address(appID))
-    print("The smart contract now holds the following:", actualAppBalancesBefore)
-    bidAmount = reserve
-    bidderAlgosBefore = getBalances(client, bidder.getAddress())[0]
-    print("Carla wants to bid on NFT, her algo balance: ", bidderAlgosBefore, " algos")
-    print("Carla is placing bid for: ", bidAmount, " algos")
-
-    placeBid(client=client, appID=appID, bidder=bidder, bidAmount=bidAmount)
-
-    print("Carla is opting into NFT with id:", nftID)
-
-    optInToAsset(client, nftID, bidder)
-
-    _, lastRoundTime = getLastBlockTimestamp(client)
-    if lastRoundTime < endTime + 5:
-        sleep(endTime + 5 - lastRoundTime)
-
-    print("Alice is closing out the auction....")
-    closeAuction(client, appID, seller)
-
-    actualAppBalances = getBalances(client, get_application_address(appID))
-    expectedAppBalances = {0: 0}
-    print("The smart contract now holds the following:", actualAppBalances)
-    assert actualAppBalances == expectedAppBalances
-
-    bidderNftBalance = getBalances(client, bidder.getAddress())[nftID]
-
-    print("Carla's NFT balance:", bidderNftBalance, " for NFT ID: ", nftID)
-
-    assert bidderNftBalance == nftAmount
-
-    actualSellerBalances = getBalances(client, seller.getAddress())
-    print("Alice's balances after auction: ", actualSellerBalances, " Algos")
-    actualBidderBalances = getBalances(client, bidder.getAddress())
-    print("Carla's balances after auction: ", actualBidderBalances, " Algos")
-    assert len(actualSellerBalances) == 2
-    # seller should receive the bid amount, minus the txn fee
-    assert actualSellerBalances[0] >= sellerAlgosBefore + bidAmount - 1_000
-    assert actualSellerBalances[nftID] == 0
+    print("Withdrawing liquidity from AMM")
+    withdraw(client=client, appID=appID, poolTokenAmount=1, withdrawAccount=creator)
+    ammBalancesWithdrawn = getBalances(client, get_application_address(appID))
+    print("AMM's balances: ", ammBalancesWithdrawn)
+    # bidder = getTemporaryAccount(client)
+    #
+    # _, lastRoundTime = getLastBlockTimestamp(client)
+    # if lastRoundTime < startTime + 5:
+    #     sleep(startTime + 5 - lastRoundTime)
+    # actualAppBalancesBefore = getBalances(client, get_application_address(appID))
+    # print("The smart contract now holds the following:", actualAppBalancesBefore)
+    # bidAmount = reserve
+    # bidderAlgosBefore = getBalances(client, bidder.getAddress())[0]
+    # print("Carla wants to bid on NFT, her algo balance: ", bidderAlgosBefore, " algos")
+    # print("Carla is placing bid for: ", bidAmount, " algos")
+    #
+    # placeBid(client=client, appID=appID, bidder=bidder, bidAmount=bidAmount)
+    #
+    # print("Carla is opting into NFT with id:", nftID)
+    #
+    # optInToAsset(client, nftID, bidder)
+    #
+    # _, lastRoundTime = getLastBlockTimestamp(client)
+    # if lastRoundTime < endTime + 5:
+    #     sleep(endTime + 5 - lastRoundTime)
+    #
+    # print("Alice is closing out the auction....")
+    # closeAuction(client, appID, seller)
+    #
+    # actualAppBalances = getBalances(client, get_application_address(appID))
+    # expectedAppBalances = {0: 0}
+    # print("The smart contract now holds the following:", actualAppBalances)
+    # assert actualAppBalances == expectedAppBalances
+    #
+    # bidderNftBalance = getBalances(client, bidder.getAddress())[nftID]
+    #
+    # print("Carla's NFT balance:", bidderNftBalance, " for NFT ID: ", nftID)
+    #
+    # assert bidderNftBalance == nftAmount
+    #
+    # actualSellerBalances = getBalances(client, seller.getAddress())
+    # print("Alice's balances after auction: ", actualSellerBalances, " Algos")
+    # actualBidderBalances = getBalances(client, bidder.getAddress())
+    # print("Carla's balances after auction: ", actualBidderBalances, " Algos")
+    # assert len(actualSellerBalances) == 2
+    # # seller should receive the bid amount, minus the txn fee
+    # assert actualSellerBalances[0] >= sellerAlgosBefore + bidAmount - 1_000
+    # assert actualSellerBalances[nftID] == 0
 
 
 simple_auction()
