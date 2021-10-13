@@ -260,6 +260,42 @@ def withdraw(client: AlgodClient, appID: int, poolTokenAmount: int, withdrawAcco
     client.send_transactions([signedPoolTokenTxn, signedAppCallTxn])
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
+def trade(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Account):
+    """Trade tokenId token for the other token in the pool
+    This action can only happen if there is liquidity in the pool
+    If the trader sends token A, the pool fee is taken out from returned token B
+    If the trader sends token B, the pool fee is taken out of sent token B before performing the swap
+    """
+    appAddr = get_application_address(appID)
+    appGlobalState = getAppGlobalState(client, appID)
+    suggestedParams = client.suggested_params()
+
+    tokenA = appGlobalState[b"token_a_key"]
+    tokenB = appGlobalState[b"token_b_key"]
+
+    tradeTxn = transaction.AssetTransferTxn(
+        sender=trader.getAddress(),
+        receiver=appAddr,
+        index=tokenId,
+        amt=amount,
+        sp=suggestedParams,
+    )
+
+    appCallTxn = transaction.ApplicationCallTxn(
+        sender=trader.getAddress(),
+        index=appID,
+        on_complete=transaction.OnComplete.NoOpOC,
+        app_args=[b"trade"],
+        foreign_assets=[tokenA, tokenB],
+        sp=suggestedParams,
+    )
+
+    transaction.assign_group_id([tradeTxn, appCallTxn])
+    signedTradeTxn = tradeTxn.sign(trader.getPrivateKey())
+    signedAppCallTxn = appCallTxn.sign(trader.getPrivateKey())
+
+    client.send_transactions([signedTradeTxn, signedAppCallTxn])
+    waitForTransaction(client, signedAppCallTxn.get_txid())
 
 def closeAmm(client: AlgodClient, appID: int, closer: Account):
     """Close an amm.

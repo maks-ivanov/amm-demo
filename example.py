@@ -2,7 +2,7 @@ from time import time, sleep
 
 from algosdk import account, encoding
 from algosdk.logic import get_application_address
-from amm.operations import createAmmApp, setupAmmApp, supply, withdraw
+from amm.operations import createAmmApp, setupAmmApp, supply, withdraw, trade
 from amm.util import (
     getBalances,
     getAppGlobalState,
@@ -86,6 +86,21 @@ def simple_auction():
     print("AMM's balances: ", ammBalancesSupplied)
     print("Alice's balances: ", creatorBalancesSupplied)
     poolTokenTotalAmount = creatorBalancesSupplied[poolToken]
+    print(' ')
+    print("Alice is exchanging her Token A for Token B")
+    trade(client=client, appID=appID, tokenId=tokenA, amount=1_000, trader=creator)
+    ammBalancesTraded= getBalances(client, get_application_address(appID))
+    creatorBalancesTraded = getBalances(client, creator.getAddress())
+    print("AMM's balances: ", ammBalancesTraded)
+    print("Alice's balances: ", creatorBalancesTraded)
+
+    print("Alice is exchanging her Token B for Token A")
+    trade(client=client, appID=appID, tokenId=tokenB, amount=int(1_000_000 * 1.003), trader=creator)
+    ammBalancesTraded= getBalances(client, get_application_address(appID))
+    creatorBalancesTraded = getBalances(client, creator.getAddress())
+    print("AMM's balances: ", ammBalancesTraded)
+    print("Alice's balances: ", creatorBalancesTraded)
+    print(' ')
 
     print("Withdrawing first supplied liquidity from AMM")
     print("Withdrawing: ", poolTokenFirstAmount)
