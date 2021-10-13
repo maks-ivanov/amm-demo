@@ -36,7 +36,7 @@ def simple_auction():
     print(
         "Alice is creating AMM that swaps between token A and token B..."
     )
-    appID = createAmmApp(client=client, sender=creator, tokenA=tokenA, tokenB=tokenB, poolToken=poolToken, feeBps=30)
+    appID = createAmmApp(client=client, sender=creator, tokenA=tokenA, tokenB=tokenB, poolToken=poolToken, feeBps=30, minIncrement=1000)
 
     print("Alice is setting up and funding amm...")
     setupAmmApp(
@@ -55,16 +55,51 @@ def simple_auction():
     print("Alice's balances: ", creatorBalancesBefore)
     print("AMM's balances: ", ammBalancesBefore)
 
-    print("Supplying AMM with token A and token B")
+    print("Supplying AMM with initial token A and token B")
     supply(client=client, appID=appID, qA=500_000, qB=100_000_000, supplier=creator)
     ammBalancesSupplied = getBalances(client, get_application_address(appID))
+    creatorBalancesSupplied = getBalances(client, creator.getAddress())
+    poolTokenFirstAmount = creatorBalancesSupplied[poolToken]
     print("AMM's balances: ", ammBalancesSupplied)
+    print("Alice's balances: ", creatorBalancesSupplied)
 
-    print("Withdrawing liquidity from AMM")
-    withdraw(client=client, appID=appID, poolTokenAmount=1, withdrawAccount=creator)
+    print("Supplying AMM with same token A and token B")
+    supply(client=client, appID=appID, qA=100_000, qB=20_000_000, supplier=creator)
+    ammBalancesSupplied = getBalances(client, get_application_address(appID))
+    creatorBalancesSupplied = getBalances(client, creator.getAddress())
+
+    print("AMM's balances: ", ammBalancesSupplied)
+    print("Alice's balances: ", creatorBalancesSupplied)
+
+    print("Supplying AMM with too large ratio of token A and token B")
+    supply(client=client, appID=appID, qA=100_000, qB=100_000, supplier=creator)
+    ammBalancesSupplied = getBalances(client, get_application_address(appID))
+    creatorBalancesSupplied = getBalances(client, creator.getAddress())
+    print("AMM's balances: ", ammBalancesSupplied)
+    print("Alice's balances: ", creatorBalancesSupplied)
+
+    print("Supplying AMM with too small ratio of token A and token B")
+    supply(client=client, appID=appID, qA=100_000, qB=100_000_000, supplier=creator)
+    ammBalancesSupplied = getBalances(client, get_application_address(appID))
+    creatorBalancesSupplied = getBalances(client, creator.getAddress())
+
+    print("AMM's balances: ", ammBalancesSupplied)
+    print("Alice's balances: ", creatorBalancesSupplied)
+    poolTokenTotalAmount = creatorBalancesSupplied[poolToken]
+
+    print("Withdrawing first supplied liquidity from AMM")
+    print("Withdrawing: ", poolTokenFirstAmount)
+    withdraw(client=client, appID=appID, poolTokenAmount=poolTokenFirstAmount, withdrawAccount=creator)
     ammBalancesWithdrawn = getBalances(client, get_application_address(appID))
     print("AMM's balances: ", ammBalancesWithdrawn)
-    # bidder = getTemporaryAccount(client)
+
+    print("Withdrawing remainder of the supplied liquidity from AMM")
+    poolTokenTotalAmount -= poolTokenFirstAmount
+    withdraw(client=client, appID=appID, poolTokenAmount=poolTokenTotalAmount, withdrawAccount=creator)
+    ammBalancesWithdrawn = getBalances(client, get_application_address(appID))
+    print("AMM's balances: ", ammBalancesWithdrawn)
+
+# bidder = getTemporaryAccount(client)
     #
     # _, lastRoundTime = getLastBlockTimestamp(client)
     # if lastRoundTime < startTime + 5:

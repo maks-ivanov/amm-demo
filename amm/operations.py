@@ -45,7 +45,8 @@ def createAmmApp(
     tokenA: int,
     tokenB: int,
     poolToken: int,
-    feeBps: int
+    feeBps: int,
+    minIncrement: int,
 ) -> int:
     """Create a new amm.
 
@@ -63,7 +64,7 @@ def createAmmApp(
     approval, clear = getContracts(client)
 
     # tokenA, tokenB, poolToken, fee
-    globalSchema = transaction.StateSchema(num_uints=6, num_byte_slices=1)
+    globalSchema = transaction.StateSchema(num_uints=7, num_byte_slices=1)
     localSchema = transaction.StateSchema(num_uints=0, num_byte_slices=0)
 
     app_args = [
@@ -72,6 +73,7 @@ def createAmmApp(
         tokenB.to_bytes(8, "big"),
         poolToken.to_bytes(8, "big"),
         feeBps.to_bytes(8, "big"),
+        minIncrement.to_bytes(8, "big")
     ]
 
     txn = transaction.ApplicationCreateTxn(
@@ -129,8 +131,8 @@ def setupAmmApp(
         100_000
         # additional min balance to opt into tokens
         + 100_000 * 3
-        # 6 * min txn fee
-        + 6 * 1_000
+        # 1000 * min txn fee
+        + 1_000 * 1_000
     )
 
     fundAppTxn = transaction.PaymentTxn(
