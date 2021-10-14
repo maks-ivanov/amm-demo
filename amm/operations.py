@@ -13,11 +13,13 @@ from .contracts import approval_program, clear_state_program
 from .util import (
     waitForTransaction,
     fullyCompileContract,
-    getAppGlobalState, getBalances,
+    getAppGlobalState,
+    getBalances,
 )
 
 APPROVAL_PROGRAM = b""
 CLEAR_STATE_PROGRAM = b""
+
 
 def getContracts(client: AlgodClient) -> Tuple[bytes, bytes]:
     """Get the compiled TEAL contracts for the amm.
@@ -41,7 +43,7 @@ def getContracts(client: AlgodClient) -> Tuple[bytes, bytes]:
 
 def createAmmApp(
     client: AlgodClient,
-    sender: Account,
+    creator: Account,
     tokenA: int,
     tokenB: int,
     poolToken: int,
@@ -52,7 +54,7 @@ def createAmmApp(
 
     Args:
         client: An algod client.
-        sender: The account that will create the amm application.
+        creator: The account that will create the amm application.
         tokenA: The id of token A in the liquidity pool,
         tokenB: The id of token A in the liquidity pool,
         poolToken: The id of pool token
@@ -68,16 +70,16 @@ def createAmmApp(
     localSchema = transaction.StateSchema(num_uints=0, num_byte_slices=0)
 
     app_args = [
-        encoding.decode_address(sender.getAddress()),
+        encoding.decode_address(creator.getAddress()),
         tokenA.to_bytes(8, "big"),
         tokenB.to_bytes(8, "big"),
         poolToken.to_bytes(8, "big"),
         feeBps.to_bytes(8, "big"),
-        minIncrement.to_bytes(8, "big")
+        minIncrement.to_bytes(8, "big"),
     ]
 
     txn = transaction.ApplicationCreateTxn(
-        sender=sender.getAddress(),
+        sender=creator.getAddress(),
         on_complete=transaction.OnComplete.NoOpOC,
         approval_program=approval,
         clear_program=clear,
@@ -87,7 +89,7 @@ def createAmmApp(
         sp=client.suggested_params(),
     )
 
-    signedTxn = txn.sign(sender.getPrivateKey())
+    signedTxn = txn.sign(creator.getPrivateKey())
 
     client.send_transaction(signedTxn)
 
@@ -103,13 +105,13 @@ def setupAmmApp(
     tokenA: int,
     tokenB: int,
     poolToken,
-    poolTokenQty
+    poolTokenAmount,
 ) -> None:
     """Finish setting up an amm.
 
     This operation funds the pool account opts that account into
     both tokens and pool token, and sends the NFT to the escrow account, all in one atomic
-    transaction group. The auction must not have started yet.
+    transaction group.
 
     The escrow account requires a total of 0.203 Algos for funding. See the code
     below for a breakdown of this amount.
@@ -130,7 +132,7 @@ def setupAmmApp(
         # min account balance
         100_000
         # additional min balance to opt into tokens
-        + 100_000 * 3
+        + 1_000 * 3
         # 1000 * min txn fee
         + 1_000 * 1_000
     )
@@ -154,7 +156,7 @@ def setupAmmApp(
         sender=funder.getAddress(),
         receiver=appAddr,
         index=poolToken,
-        amt=poolTokenQty,
+        amt=poolTokenAmount,
         sp=suggestedParams,
     )
     transaction.assign_group_id([fundAppTxn, setupTxn, fundPoolTokenTxn])
@@ -167,15 +169,25 @@ def setupAmmApp(
 
     waitForTransaction(client, signedFundAppTxn.get_txid())
 
-def supply(client: AlgodClient, appID: int, qA: int, qB: int, supplier: Account) -> None:
+
+def supply(
+    client: AlgodClient, appID: int, qA: int, qB: int, supplier: Account
+) -> None:
     """Supply liquidity to the pool.
-    Supplier should receive pool tokens proportional to their liquidity share in the pool.
+    Let rA, rB denote the existing pool reserves of token A and token B respectively
+
+    First supplier will receive sqrt(qA*qB) tokens, subsequent suppliers will receive
+    qA/rA where rA is the amount of token A already in the pool.
+    If qA/qB != rA/rB, the pool will first attempt to take full amount qA, returning excess token B
+    Else if there is insufficient amount qB, the pool will then attempt to take the full amount qB, returning
+     excess token A
+    Else transaction will be rejected
 
     Args:
         client: AlgodClient,
         appID: amm app id,
-        qA: quantity of token A to supply the pool
-        qB: quantity of token B to supply to the pool
+        qA: amount of token A to supply the pool
+        qB: amount of token B to supply to the pool
         supplier: supplier account
     """
     appAddr = get_application_address(appID)
@@ -218,9 +230,12 @@ def supply(client: AlgodClient, appID: int, qA: int, qB: int, supplier: Account)
     client.send_transactions([signedTokenATxn, signedTokenBTxn, signedAppCallTxn])
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
-def withdraw(client: AlgodClient, appID: int, poolTokenAmount: int, withdrawAccount: Account) -> None:
+
+def withdraw(
+    client: AlgodClient, appID: int, poolTokenAmount: int, withdrawAccount: Account
+) -> None:
     """Withdraw liquidity  + rewards from the pool back to supplier.
-    Supplier should receive tokenA, tokenB + rewards proportional to the liquidity share in the pool they choose to withdraw.
+    Supplier should receive tokenA, tokenB + fees proportional to the liquidity share in the pool they choose to withdraw.
 
     Args:
         client: AlgodClient,
@@ -260,8 +275,9 @@ def withdraw(client: AlgodClient, appID: int, poolTokenAmount: int, withdrawAcco
     client.send_transactions([signedPoolTokenTxn, signedAppCallTxn])
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
-def trade(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Account):
-    """Trade tokenId token for the other token in the pool
+
+def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Account):
+    """Swap tokenId token for the other token in the pool
     This action can only happen if there is liquidity in the pool
     If the trader sends token A, the pool fee is taken out from returned token B
     If the trader sends token B, the pool fee is taken out of sent token B before performing the swap
@@ -285,7 +301,7 @@ def trade(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Ac
         sender=trader.getAddress(),
         index=appID,
         on_complete=transaction.OnComplete.NoOpOC,
-        app_args=[b"trade"],
+        app_args=[b"swap"],
         foreign_assets=[tokenA, tokenB],
         sp=suggestedParams,
     )
@@ -297,6 +313,7 @@ def trade(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Ac
     client.send_transactions([signedTradeTxn, signedAppCallTxn])
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
+
 def closeAmm(client: AlgodClient, appID: int, closer: Account):
     """Close an amm.
 
@@ -305,23 +322,17 @@ def closeAmm(client: AlgodClient, appID: int, closer: Account):
     Args:
         client: An Algod client.
         appID: The app ID of the auction.
-        closer: any account
+        closer: closer account. Must be the original creator of the pool.
     """
     appGlobalState = getAppGlobalState(client, appID)
-
-    nftID = appGlobalState[b"nft_id"]
-
-    accounts: List[str] = [encoding.encode_address(appGlobalState[b"seller"])]
-
-    if any(appGlobalState[b"bid_account"]):
-        # if "bid_account" is not the zero address
-        accounts.append(encoding.encode_address(appGlobalState[b"bid_account"]))
+    pool_tokens_outstanding = appGlobalState[b"pool_tokens_outstanding_key"]
+    if pool_tokens_outstanding > 0:
+        print("Cannot close AMM, liquidity remaining")
+        return
 
     deleteTxn = transaction.ApplicationDeleteTxn(
         sender=closer.getAddress(),
         index=appID,
-        accounts=accounts,
-        foreign_assets=[nftID],
         sp=client.suggested_params(),
     )
     signedDeleteTxn = deleteTxn.sign(closer.getPrivateKey())
