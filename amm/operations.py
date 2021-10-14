@@ -323,6 +323,7 @@ def closeAmm(client: AlgodClient, appID: int, closer: Account):
         appID: The app ID of the auction.
         closer: closer account. Must be the original creator of the pool.
     """
+
     appGlobalState = getAppGlobalState(client, appID)
     pool_tokens_outstanding = appGlobalState[b"pool_tokens_outstanding_key"]
     if pool_tokens_outstanding > 0:
