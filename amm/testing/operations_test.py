@@ -6,10 +6,14 @@ import pytest
 from algosdk import account, encoding
 from algosdk.logic import get_application_address
 
-from .operations import createAmmApp, setupAmmApp, supply, withdraw, swap, closeAmm
-from .util import getBalances, getAppGlobalState, getLastBlockTimestamp
-from .testing.setup import getAlgodClient
-from .testing.resources import getTemporaryAccount, optInToAsset, createDummyAsset
+from amm.operations import createAmmApp, setupAmmApp, supply, withdraw, swap, closeAmm
+from amm.util import getBalances, getAppGlobalState, getLastBlockTimestamp
+from amm.testing.setup import getAlgodClient
+from amm.testing.resources import getTemporaryAccount, optInToAsset, createDummyAsset
+
+
+def is_close(a, b, e=1):
+    return abs(a - b) <= e
 
 
 def test_create():
@@ -220,47 +224,95 @@ def test_withdraw():
     )
 
     supply(client, appID, 1000, 2000, creator)
-    expectedPoolTokensOutstanding = int(sqrt(1000 * 2000))
-    withdraw(client, appID, expectedPoolTokensOutstanding // 2, creator)
+    initialPoolTokensOutstanding = int(sqrt(1000 * 2000))
+
+    # return one third of pool tokens to the pool, keep two thirds
+    withdraw(client, appID, initialPoolTokensOutstanding // 3, creator)
 
     firstPoolTokens = getBalances(client, creator.getAddress())[poolToken]
     expectedPoolTokens = (
-        expectedPoolTokensOutstanding - expectedPoolTokensOutstanding // 2
+        initialPoolTokensOutstanding - initialPoolTokensOutstanding // 3
     )
     assert firstPoolTokens == expectedPoolTokens
 
     firstTokenAAmount = getBalances(client, creator.getAddress())[tokenA]
-    expectedTokenAAmount = tokenAAmount - 500
+    expectedTokenAAmount = tokenAAmount - 1000 + 1000 // 3
     assert firstTokenAAmount == expectedTokenAAmount
 
     firstTokenBAmount = getBalances(client, creator.getAddress())[tokenB]
-    expectedTokenBAmount = tokenBAmount - 1000
+    expectedTokenBAmount = tokenBAmount - 2000 + 2000 // 3
     assert firstTokenBAmount == expectedTokenBAmount
 
-    supply(client, appID, 1500, 3000, creator)
+    # double the original liquidity
+    supply(client, appID, 1000 + 1000 // 3, 2000 + 2000 // 3, creator)
     actualTokensOutstanding = getAppGlobalState(client, appID)[
         b"pool_tokens_outstanding_key"
     ]
-    expectedPoolTokensOutstanding = firstPoolTokens * 4
-    secondPoolTokens = (
-        getBalances(client, creator.getAddress())[poolToken] - firstPoolTokens
-    )
-    assert actualTokensOutstanding == expectedPoolTokensOutstanding
-    assert secondPoolTokens == firstPoolTokens * 3
+    assert is_close(actualTokensOutstanding, initialPoolTokensOutstanding * 2)
 
-    # # should take 10000 : 20000
-    # supply(client, appID, 12000, 20000, creator)
-    # actualTokensOutstanding = getAppGlobalState(client, appID)[
-    #     b"pool_tokens_outstanding_key"
-    # ]
-    # expectedPoolTokensOutstanding = firstPoolTokens * 12  # 2 + 10
-    # thirdPoolTokens = (
-    #         getBalances(client, creator.getAddress())[poolToken]
-    #         - secondPoolTokens
-    #         - firstPoolTokens
-    # )
-    # assert actualTokensOutstanding == expectedPoolTokensOutstanding
-    # assert thirdPoolTokens == firstPoolTokens * 10
+    withdraw(client, appID, initialPoolTokensOutstanding, creator)
+
+    poolBalances = getBalances(client, get_application_address(appID))
+
+    expectedTokenAAmount = 1000
+    expectedTokenBAmount = 2000
+    supplierPoolTokens = getBalances(client, creator.getAddress())[poolToken]
+    assert is_close(poolBalances[tokenA], expectedTokenAAmount)
+    assert is_close(poolBalances[tokenB], expectedTokenBAmount)
+    assert is_close(supplierPoolTokens, initialPoolTokensOutstanding)
+
+
+def test_swap():
+    client = getAlgodClient()
+    creator = getTemporaryAccount(client)
+    tokenAAmount = 1_000_000_000
+    tokenBAmount = 2_000_000_000
+    poolTokenAmount = 10 ** 13
+    tokenA = createDummyAsset(client, tokenAAmount, creator)
+    tokenB = createDummyAsset(client, tokenBAmount, creator)
+    poolToken = createDummyAsset(client, poolTokenAmount, creator)
+    feeBps = 30
+    minIncrement = 1000
+
+    appID = createAmmApp(
+        client, creator, tokenA, tokenB, poolToken, feeBps, minIncrement
+    )
+
+    setupAmmApp(
+        client=client,
+        appID=appID,
+        funder=creator,
+        tokenA=tokenA,
+        tokenB=tokenB,
+        poolToken=poolToken,
+        poolTokenAmount=poolTokenAmount,
+    )
+
+    m, n = 100_000_000, 200_000_000
+    supply(client, appID, m, n, creator)
+
+    with pytest.raises(algosdk.error.AlgodHTTPError) as e:
+        # swap wrong token
+        swap(client, appID, poolToken, 1, creator)
+        assert "logic eval error: assert failed" in str(e)
+
+    x = 2_000_000
+    swap(client, appID, tokenA, x, creator)
+    initialProduct = m * n
+    expectedReceivedTokenB = n - initialProduct // (
+        m + (100_00 - feeBps) * 2_000_000 // 100_00
+    )
+
+    poolBalances = getBalances(client, get_application_address(appID))
+    actualReceivedTokenB = n - poolBalances[tokenB]
+    actualSentTokenA = poolBalances[tokenA] - m
+    assert actualSentTokenA == x
+    assert actualReceivedTokenB == expectedReceivedTokenB
+
+    expectedNewProduct = initialProduct - expectedReceivedTokenB * (m + x) + (x * n)
+    actualNewProduct = poolBalances[tokenA] * poolBalances[tokenB]
+    assert actualNewProduct == expectedNewProduct
+    assert actualNewProduct > initialProduct
 
 
 #

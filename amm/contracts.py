@@ -215,9 +215,11 @@ def approval_program():
     )
 
     on_swap_txn_index = Txn.group_index() - Int(1)
+    given_token_amt_before_txn = ScratchVar(TealType.uint64)
+    other_token_amt_before_txn = ScratchVar(TealType.uint64)
+
     to_send_key = ScratchVar(TealType.bytes)
     to_send_amount = ScratchVar(TealType.uint64)
-    send_limit = ScratchVar(TealType.uint64)
 
     on_swap = Seq(
         token_a_holding,
@@ -234,38 +236,36 @@ def approval_program():
         If(Gtxn[on_swap_txn_index].xfer_asset() == App.globalGet(token_a_key))
         .Then(
             Seq(
-                token_a_before_txn.store(
+                given_token_amt_before_txn.store(
                     token_a_holding.value() - Gtxn[on_swap_txn_index].asset_amount()
                 ),
-                token_b_before_txn.store(token_b_holding.value()),
+                other_token_amt_before_txn.store(token_b_holding.value()),
                 to_send_key.store(token_b_key),
-                send_limit.store(token_b_holding.value()),
             )
         )
         .ElseIf(Gtxn[on_swap_txn_index].xfer_asset() == App.globalGet(token_b_key))
         .Then(
             Seq(
-                token_a_before_txn.store(token_a_holding.value()),
-                token_b_before_txn.store(
+                given_token_amt_before_txn.store(
                     token_b_holding.value() - Gtxn[on_swap_txn_index].asset_amount()
                 ),
+                other_token_amt_before_txn.store(token_a_holding.value()),
                 to_send_key.store(token_a_key),
-                send_limit.store(token_a_holding.value()),
             )
         )
         .Else(Reject()),
         to_send_amount.store(
-            computeTokenAOutputPerTokenBInput(
+            computeOtherTokenOutputPerGivenTokenInput(
                 Gtxn[on_swap_txn_index].asset_amount(),
-                token_a_before_txn.load(),
-                token_b_before_txn.load(),
+                given_token_amt_before_txn.load(),
+                other_token_amt_before_txn.load(),
                 App.globalGet(fee_bps_key),
             )
         ),
         Assert(
             And(
                 to_send_amount.load() > Int(0),
-                to_send_amount.load() < send_limit.load(),
+                to_send_amount.load() < other_token_amt_before_txn.load(),
             )
         ),
         sendToken(to_send_key.load(), Txn.sender(), to_send_amount.load()),

@@ -279,8 +279,7 @@ def withdraw(
 def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Account):
     """Swap tokenId token for the other token in the pool
     This action can only happen if there is liquidity in the pool
-    If the trader sends token A, the pool fee is taken out from returned token B
-    If the trader sends token B, the pool fee is taken out of sent token B before performing the swap
+    A 0.30% fee is taken out of the input amount before calculating the output amount
     """
     appAddr = get_application_address(appID)
     appGlobalState = getAppGlobalState(client, appID)

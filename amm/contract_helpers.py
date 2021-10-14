@@ -67,7 +67,6 @@ def withdrawGivenPoolToken(
     token_holding = AssetHolding.balance(
         Global.current_application_address(), App.globalGet(token_key)
     )
-
     return Seq(
         token_holding,
         If(
@@ -102,33 +101,22 @@ def withdrawGivenPoolToken(
 
 
 @Subroutine(TealType.uint64)
-def assessFee(token_b: TealType.uint64, fee_bps: TealType.uint64):
+def assessFee(amount: TealType.uint64, fee_bps: TealType.uint64):
     fee_num = Int(10000) - fee_bps
     fee_denom = Int(10000)
-    return xMulYDivZ(token_b, fee_num, fee_denom)
+    return xMulYDivZ(amount, fee_num, fee_denom)
 
 
 @Subroutine(TealType.uint64)
-def computeTokenBOutputPerTokenAInput(
-    amount: TealType.uint64,
-    previous_token_a: TealType.uint64,
-    previous_token_b: TealType.uint64,
-    token_b_fee_bps: TealType.uint64,
+def computeOtherTokenOutputPerGivenTokenInput(
+    input_amount: TealType.uint64,
+    previous_given_token_amount: TealType.uint64,
+    previous_other_token_amount: TealType.uint64,
+    fee_bps: TealType.uint64,
 ):
-    k = previous_token_a * previous_token_b
-    to_send = previous_token_b - k / (previous_token_a + amount)
-    to_send = assessFee(to_send, token_b_fee_bps)
-    return to_send
-
-
-@Subroutine(TealType.uint64)
-def computeTokenAOutputPerTokenBInput(
-    amount: TealType.uint64,
-    previous_token_a: TealType.uint64,
-    previous_token_b: TealType.uint64,
-    token_b_fee_bps: TealType.uint64,
-):
-    k = previous_token_a * previous_token_b
-    amount_sub_fee = assessFee(amount, token_b_fee_bps)
-    to_send = previous_token_a - k / (previous_token_b + amount_sub_fee)
+    k = previous_given_token_amount * previous_other_token_amount
+    amount_sub_fee = assessFee(input_amount, fee_bps)
+    to_send = previous_other_token_amount - k / (
+        previous_given_token_amount + amount_sub_fee
+    )
     return to_send
