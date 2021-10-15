@@ -114,7 +114,7 @@ def setupAmmApp(
 
     Args:
         client: An algod client.
-        appID: The app ID of the auction.
+        appID: The app ID of the amm.
         funder: The account providing the funding for the escrow account.
         tokenA: Token A id.
         tokenB: Token B id.
@@ -344,7 +344,7 @@ def closeAmm(client: AlgodClient, appID: int, closer: Account):
 
     Args:
         client: An Algod client.
-        appID: The app ID of the auction.
+        appID: The app ID of the amm.
         closer: closer account. Must be the original creator of the pool.
     """
 

@@ -1,11 +1,17 @@
 # Algorand AMM Demo
 
-This demo is an on-chain automated market maker using smart contracts on the Algorand blockchain.
+This demo is an on-chain automated market maker using smart contracts on the Algorand blockchain. 
+This AMM facilitates swaps between configured tokens using the constant product formula and charges a configurable fee.
+
+Users are able to supply liquidity, for which they receive pool tokens that entitle them to redeem the corresponding portion of pool reserves plus accrued fees.
+First liquidity provider can supply tokens in any proportion. Subsequent users supply tokens at current market rate.
+
+Providers can withdraw liquidity at current market rate, i.e. the current ratio of the reserve.
 
 ## Usage
 
 The file `amm/operations.py` provides a set of functions that can be used to create and interact
-with auctions. See that file for documentation.
+with AMM. See that file for documentation.
 
 ## Development Setup
 
