@@ -1,20 +1,16 @@
-from random import randint
-from typing import Tuple, List
+from typing import Tuple
 
 from algosdk.v2client.algod import AlgodClient
 from algosdk.future import transaction
 from algosdk.logic import get_application_address
-from algosdk import account, encoding
-
-from pyteal import compileTeal, Mode
+from algosdk import encoding
 
 from .account import Account
-from .contracts import approval_program, clear_state_program
+from amm.contracts.contracts import approval_program, clear_state_program
 from .util import (
     waitForTransaction,
     fullyCompileContract,
     getAppGlobalState,
-    getBalances,
 )
 
 APPROVAL_PROGRAM = b""
@@ -24,7 +20,7 @@ CLEAR_STATE_PROGRAM = b""
 def getContracts(client: AlgodClient) -> Tuple[bytes, bytes]:
     """Get the compiled TEAL contracts for the amm.
 
-    Args:
+    Args:q
         client: An algod client that has the ability to compile TEAL programs.
 
     Returns:
@@ -198,6 +194,14 @@ def supply(
     tokenB = appGlobalState[b"token_b_key"]
     poolToken = appGlobalState[b"pool_token_key"]
 
+    # pay for the fee incurred by AMM for sending back the pool token
+    feeTxn = transaction.PaymentTxn(
+        sender=supplier.getAddress(),
+        receiver=appAddr,
+        amt=2_000,
+        sp=suggestedParams,
+    )
+
     tokenATxn = transaction.AssetTransferTxn(
         sender=supplier.getAddress(),
         receiver=appAddr,
@@ -222,12 +226,15 @@ def supply(
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([tokenATxn, tokenBTxn, appCallTxn])
+    transaction.assign_group_id([feeTxn, tokenATxn, tokenBTxn, appCallTxn])
+    signedFeeTxn = feeTxn.sign(supplier.getPrivateKey())
     signedTokenATxn = tokenATxn.sign(supplier.getPrivateKey())
     signedTokenBTxn = tokenBTxn.sign(supplier.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(supplier.getPrivateKey())
 
-    client.send_transactions([signedTokenATxn, signedTokenBTxn, signedAppCallTxn])
+    client.send_transactions(
+        [signedFeeTxn, signedTokenATxn, signedTokenBTxn, signedAppCallTxn]
+    )
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
 
@@ -246,6 +253,14 @@ def withdraw(
     appAddr = get_application_address(appID)
     appGlobalState = getAppGlobalState(client, appID)
     suggestedParams = client.suggested_params()
+
+    # pay for the fee incurred by AMM for sending back tokens A and B
+    feeTxn = transaction.PaymentTxn(
+        sender=withdrawAccount.getAddress(),
+        receiver=appAddr,
+        amt=1_000 * 3,
+        sp=suggestedParams,
+    )
 
     tokenA = appGlobalState[b"token_a_key"]
     tokenB = appGlobalState[b"token_b_key"]
@@ -268,11 +283,12 @@ def withdraw(
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([poolTokenTxn, appCallTxn])
+    transaction.assign_group_id([feeTxn, poolTokenTxn, appCallTxn])
+    signedFeeTxn = feeTxn.sign(withdrawAccount.getPrivateKey())
     signedPoolTokenTxn = poolTokenTxn.sign(withdrawAccount.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(withdrawAccount.getPrivateKey())
 
-    client.send_transactions([signedPoolTokenTxn, signedAppCallTxn])
+    client.send_transactions([signedFeeTxn, signedPoolTokenTxn, signedAppCallTxn])
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
 
@@ -284,6 +300,13 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
     appAddr = get_application_address(appID)
     appGlobalState = getAppGlobalState(client, appID)
     suggestedParams = client.suggested_params()
+
+    feeTxn = transaction.PaymentTxn(
+        sender=trader.getAddress(),
+        receiver=appAddr,
+        amt=1_000 * 2,
+        sp=suggestedParams,
+    )
 
     tokenA = appGlobalState[b"token_a_key"]
     tokenB = appGlobalState[b"token_b_key"]
@@ -305,11 +328,12 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([tradeTxn, appCallTxn])
+    transaction.assign_group_id([feeTxn, tradeTxn, appCallTxn])
+    signedFeeTxn = feeTxn.sign(trader.getPrivateKey())
     signedTradeTxn = tradeTxn.sign(trader.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(trader.getPrivateKey())
 
-    client.send_transactions([signedTradeTxn, signedAppCallTxn])
+    client.send_transactions([signedFeeTxn, signedTradeTxn, signedAppCallTxn])
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
 

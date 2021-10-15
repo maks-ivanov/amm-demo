@@ -1,6 +1,10 @@
 from pyteal import *
 
-SCALING_FACTOR = Int(10 ** 13)
+from amm.contracts.config import (
+    SCALING_FACTOR,
+    POOL_TOKENS_OUTSTANDING_KEY,
+    POOL_TOKEN_KEY,
+)
 
 
 @Subroutine(TealType.uint64)
@@ -120,3 +124,14 @@ def computeOtherTokenOutputPerGivenTokenInput(
         previous_given_token_amount + amount_sub_fee
     )
     return to_send
+
+
+@Subroutine(TealType.none)
+def mintAndSendPoolTokens(receiver: Expr, amount) -> Expr:
+    return Seq(
+        sendToken(POOL_TOKEN_KEY, receiver, amount),
+        App.globalPut(
+            POOL_TOKENS_OUTSTANDING_KEY,
+            App.globalGet(POOL_TOKENS_OUTSTANDING_KEY) + amount,
+        ),
+    )

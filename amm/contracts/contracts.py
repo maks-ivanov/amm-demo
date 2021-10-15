@@ -1,58 +1,21 @@
 from pyteal import *
-from .contract_helpers import *
+from amm.contracts.helpers import *
+from amm.contracts.config import *
+
+token_a_holding = AssetHolding.balance(
+    Global.current_application_address(), App.globalGet(TOKEN_A_KEY)
+)
+token_b_holding = AssetHolding.balance(
+    Global.current_application_address(), App.globalGet(TOKEN_B_KEY)
+)
 
 
-def approval_program():
-    creator_key = Bytes("creator")
-    token_a_key = Bytes("token_a_key")
-    token_b_key = Bytes("token_b_key")
-    pool_token_key = Bytes("pool_token_key")
-    fee_bps_key = Bytes("fee_bps_key")
-    min_increment_key = Bytes("min_increment_key")
-    pool_tokens_outstanding_key = Bytes("pool_tokens_outstanding_key")
-
-    @Subroutine(TealType.none)
-    def mintAndSendPoolTokens(receiver: Expr, amount) -> Expr:
-        return Seq(
-            sendToken(pool_token_key, receiver, amount),
-            App.globalPut(
-                pool_tokens_outstanding_key,
-                App.globalGet(pool_tokens_outstanding_key) + amount,
-            ),
-        )
-
-    on_create = Seq(
-        # no negative fees allowed
-        Assert(Btoi(Txn.application_args[4]) > Int(0)),
-        App.globalPut(creator_key, Txn.application_args[0]),
-        App.globalPut(token_a_key, Btoi(Txn.application_args[1])),
-        App.globalPut(token_b_key, Btoi(Txn.application_args[2])),
-        App.globalPut(pool_token_key, Btoi(Txn.application_args[3])),
-        App.globalPut(fee_bps_key, Btoi(Txn.application_args[4])),
-        App.globalPut(min_increment_key, Btoi(Txn.application_args[5])),
-        App.globalPut(pool_tokens_outstanding_key, Int(0)),
-        Approve(),
-    )
-    #
-    on_setup = Seq(
-        optIn(token_a_key),
-        optIn(token_b_key),
-        optIn(pool_token_key),
-        Approve(),
-    )
-
+def supply_program():
     token_a_txn_index = Txn.group_index() - Int(2)
     token_b_txn_index = Txn.group_index() - Int(1)
 
     pool_token_holding = AssetHolding.balance(
-        Global.current_application_address(), App.globalGet(pool_token_key)
-    )
-
-    token_a_holding = AssetHolding.balance(
-        Global.current_application_address(), App.globalGet(token_a_key)
-    )
-    token_b_holding = AssetHolding.balance(
-        Global.current_application_address(), App.globalGet(token_b_key)
+        Global.current_application_address(), App.globalGet(POOL_TOKEN_KEY)
     )
 
     token_a_before_txn: ScratchVar = ScratchVar(TealType.uint64)
@@ -68,12 +31,12 @@ def approval_program():
             And(
                 pool_token_holding.hasValue(),
                 pool_token_holding.value() > Int(0),
-                validateTokenReceived(token_a_txn_index, token_a_key),
-                validateTokenReceived(token_b_txn_index, token_b_key),
+                validateTokenReceived(token_a_txn_index, TOKEN_A_KEY),
+                validateTokenReceived(token_b_txn_index, TOKEN_B_KEY),
                 Gtxn[token_a_txn_index].asset_amount()
-                >= App.globalGet(min_increment_key),
+                >= App.globalGet(MIN_INCREMENT_KEY),
                 Gtxn[token_b_txn_index].asset_amount()
-                >= App.globalGet(min_increment_key),
+                >= App.globalGet(MIN_INCREMENT_KEY),
             )
         ),
         token_a_before_txn.store(
@@ -119,14 +82,14 @@ def approval_program():
                     Seq(
                         # keep all A, return remainder B
                         returnRemainder(
-                            token_b_key,
+                            TOKEN_B_KEY,
                             Gtxn[token_b_txn_index].asset_amount(),
                             to_keep.load(),
                         ),
                         mintAndSendPoolTokens(
                             Txn.sender(),
                             xMulYDivZ(
-                                App.globalGet(pool_tokens_outstanding_key),
+                                App.globalGet(POOL_TOKENS_OUTSTANDING_KEY),
                                 Gtxn[token_a_txn_index].asset_amount(),
                                 token_a_before_txn.load(),
                             ),
@@ -153,14 +116,14 @@ def approval_program():
                             Seq(
                                 # keep all B, return remainder A
                                 returnRemainder(
-                                    token_a_key,
+                                    TOKEN_A_KEY,
                                     Gtxn[token_a_txn_index].asset_amount(),
                                     to_keep.load(),
                                 ),
                                 mintAndSendPoolTokens(
                                     Txn.sender(),
                                     xMulYDivZ(
-                                        App.globalGet(pool_tokens_outstanding_key),
+                                        App.globalGet(POOL_TOKENS_OUTSTANDING_KEY),
                                         Gtxn[token_b_txn_index].asset_amount(),
                                         token_b_before_txn.load(),
                                     ),
@@ -175,7 +138,11 @@ def approval_program():
         Reject(),
     )
 
-    on_withdraw_pool_token_txn_index = Txn.group_index() - Int(1)
+    return on_supply
+
+
+def withdraw_program():
+    pool_token_txn_index = Txn.group_index() - Int(1)
     on_withdraw = Seq(
         token_a_holding,
         token_b_holding,
@@ -186,27 +153,27 @@ def approval_program():
                 token_a_holding.value() > Int(0),
                 token_b_holding.hasValue(),
                 token_b_holding.value() > Int(0),
-                validateTokenReceived(on_withdraw_pool_token_txn_index, pool_token_key),
+                validateTokenReceived(pool_token_txn_index, POOL_TOKEN_KEY),
             )
         ),
-        If(Gtxn[on_withdraw_pool_token_txn_index].asset_amount() > Int(0)).Then(
+        If(Gtxn[pool_token_txn_index].asset_amount() > Int(0)).Then(
             Seq(
                 withdrawGivenPoolToken(
                     Txn.sender(),
-                    token_a_key,
-                    Gtxn[on_withdraw_pool_token_txn_index].asset_amount(),
-                    App.globalGet(pool_tokens_outstanding_key),
+                    TOKEN_A_KEY,
+                    Gtxn[pool_token_txn_index].asset_amount(),
+                    App.globalGet(POOL_TOKENS_OUTSTANDING_KEY),
                 ),
                 withdrawGivenPoolToken(
                     Txn.sender(),
-                    token_b_key,
-                    Gtxn[on_withdraw_pool_token_txn_index].asset_amount(),
-                    App.globalGet(pool_tokens_outstanding_key),
+                    TOKEN_B_KEY,
+                    Gtxn[pool_token_txn_index].asset_amount(),
+                    App.globalGet(POOL_TOKENS_OUTSTANDING_KEY),
                 ),
                 App.globalPut(
-                    pool_tokens_outstanding_key,
-                    App.globalGet(pool_tokens_outstanding_key)
-                    - Gtxn[on_withdraw_pool_token_txn_index].asset_amount(),
+                    POOL_TOKENS_OUTSTANDING_KEY,
+                    App.globalGet(POOL_TOKENS_OUTSTANDING_KEY)
+                    - Gtxn[pool_token_txn_index].asset_amount(),
                 ),
                 Approve(),
             ),
@@ -214,6 +181,10 @@ def approval_program():
         Reject(),
     )
 
+    return on_withdraw
+
+
+def swap_program():
     on_swap_txn_index = Txn.group_index() - Int(1)
     given_token_amt_before_txn = ScratchVar(TealType.uint64)
     other_token_amt_before_txn = ScratchVar(TealType.uint64)
@@ -226,31 +197,31 @@ def approval_program():
         token_b_holding,
         Assert(
             And(
-                App.globalGet(pool_tokens_outstanding_key) > Int(0),
+                App.globalGet(POOL_TOKENS_OUTSTANDING_KEY) > Int(0),
                 Or(
-                    validateTokenReceived(on_swap_txn_index, token_a_key),
-                    validateTokenReceived(on_swap_txn_index, token_b_key),
+                    validateTokenReceived(on_swap_txn_index, TOKEN_A_KEY),
+                    validateTokenReceived(on_swap_txn_index, TOKEN_B_KEY),
                 ),
             )
         ),
-        If(Gtxn[on_swap_txn_index].xfer_asset() == App.globalGet(token_a_key))
+        If(Gtxn[on_swap_txn_index].xfer_asset() == App.globalGet(TOKEN_A_KEY))
         .Then(
             Seq(
                 given_token_amt_before_txn.store(
                     token_a_holding.value() - Gtxn[on_swap_txn_index].asset_amount()
                 ),
                 other_token_amt_before_txn.store(token_b_holding.value()),
-                to_send_key.store(token_b_key),
+                to_send_key.store(TOKEN_B_KEY),
             )
         )
-        .ElseIf(Gtxn[on_swap_txn_index].xfer_asset() == App.globalGet(token_b_key))
+        .ElseIf(Gtxn[on_swap_txn_index].xfer_asset() == App.globalGet(TOKEN_B_KEY))
         .Then(
             Seq(
                 given_token_amt_before_txn.store(
                     token_b_holding.value() - Gtxn[on_swap_txn_index].asset_amount()
                 ),
                 other_token_amt_before_txn.store(token_a_holding.value()),
-                to_send_key.store(token_a_key),
+                to_send_key.store(TOKEN_A_KEY),
             )
         )
         .Else(Reject()),
@@ -259,7 +230,7 @@ def approval_program():
                 Gtxn[on_swap_txn_index].asset_amount(),
                 given_token_amt_before_txn.load(),
                 other_token_amt_before_txn.load(),
-                App.globalGet(fee_bps_key),
+                App.globalGet(FEE_BPS_KEY),
             )
         ),
         Assert(
@@ -272,9 +243,37 @@ def approval_program():
         Approve(),
     )
 
+    return on_swap
+
+
+def approval_program():
+    on_create = Seq(
+        # no negative fees allowed
+        Assert(Btoi(Txn.application_args[4]) > Int(0)),
+        App.globalPut(CREATOR_KEY, Txn.application_args[0]),
+        App.globalPut(TOKEN_A_KEY, Btoi(Txn.application_args[1])),
+        App.globalPut(TOKEN_B_KEY, Btoi(Txn.application_args[2])),
+        App.globalPut(POOL_TOKEN_KEY, Btoi(Txn.application_args[3])),
+        App.globalPut(FEE_BPS_KEY, Btoi(Txn.application_args[4])),
+        App.globalPut(MIN_INCREMENT_KEY, Btoi(Txn.application_args[5])),
+        App.globalPut(POOL_TOKENS_OUTSTANDING_KEY, Int(0)),
+        Approve(),
+    )
+
+    on_setup = Seq(
+        optIn(TOKEN_A_KEY),
+        optIn(TOKEN_B_KEY),
+        optIn(POOL_TOKEN_KEY),
+        Approve(),
+    )
+
+    on_supply = supply_program()
+    on_withdraw = withdraw_program()
+    on_swap = swap_program()
+
     on_delete = Seq(
-        If(App.globalGet(pool_tokens_outstanding_key) == Int(0)).Then(
-            Seq(Assert(Txn.sender() == App.globalGet(creator_key)), Approve())
+        If(App.globalGet(POOL_TOKENS_OUTSTANDING_KEY) == Int(0)).Then(
+            Seq(Assert(Txn.sender() == App.globalGet(CREATOR_KEY)), Approve())
         ),
         Reject(),
     )

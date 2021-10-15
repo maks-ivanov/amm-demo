@@ -1,6 +1,6 @@
-# Algorand Auction Demo
+# Algorand AMM Demo
 
-This demo is an on-chain AMM using smart contracts on the Algorand blockchain.
+This demo is an on-chain automated market maker using smart contracts on the Algorand blockchain.
 
 ## Usage
 

@@ -42,7 +42,7 @@ def test_create():
     # fee too high?
     actual = getAppGlobalState(client, appID)
     expected = {
-        b"creator": encoding.decode_address(creator.getAddress()),
+        b"creator_key": encoding.decode_address(creator.getAddress()),
         b"token_a_key": tokenA,
         b"token_b_key": tokenB,
         b"pool_token_key": poolToken,
@@ -86,7 +86,7 @@ def test_setup():
 
     actualState = getAppGlobalState(client, appID)
     expectedState = {
-        b"creator": encoding.decode_address(creator.getAddress()),
+        b"creator_key": encoding.decode_address(creator.getAddress()),
         b"token_a_key": tokenA,
         b"token_b_key": tokenB,
         b"pool_token_key": poolToken,
