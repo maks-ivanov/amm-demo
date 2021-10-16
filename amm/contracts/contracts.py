@@ -10,7 +10,7 @@ token_b_holding = AssetHolding.balance(
 )
 
 
-def supply_program():
+def get_supply_program():
     token_a_txn_index = Txn.group_index() - Int(2)
     token_b_txn_index = Txn.group_index() - Int(1)
 
@@ -141,7 +141,7 @@ def supply_program():
     return on_supply
 
 
-def withdraw_program():
+def get_withdraw_program():
     pool_token_txn_index = Txn.group_index() - Int(1)
     on_withdraw = Seq(
         token_a_holding,
@@ -184,7 +184,7 @@ def withdraw_program():
     return on_withdraw
 
 
-def swap_program():
+def get_swap_program():
     on_swap_txn_index = Txn.group_index() - Int(1)
     given_token_amt_before_txn = ScratchVar(TealType.uint64)
     other_token_amt_before_txn = ScratchVar(TealType.uint64)
@@ -267,9 +267,9 @@ def approval_program():
         Approve(),
     )
 
-    on_supply = supply_program()
-    on_withdraw = withdraw_program()
-    on_swap = swap_program()
+    on_supply = get_supply_program()
+    on_withdraw = get_withdraw_program()
+    on_swap = get_swap_program()
 
     on_delete = Seq(
         If(App.globalGet(POOL_TOKENS_OUTSTANDING_KEY) == Int(0)).Then(
