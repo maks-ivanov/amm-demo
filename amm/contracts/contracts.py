@@ -1,4 +1,3 @@
-from pyteal import *
 from amm.contracts.helpers import *
 from amm.contracts.config import *
 
@@ -20,8 +19,6 @@ def get_supply_program():
 
     token_a_before_txn: ScratchVar = ScratchVar(TealType.uint64)
     token_b_before_txn: ScratchVar = ScratchVar(TealType.uint64)
-
-    to_keep = ScratchVar(TealType.uint64)
 
     on_supply = Seq(
         pool_token_holding,
@@ -52,6 +49,7 @@ def get_supply_program():
             )
         )
         .Then(
+            # no liquidity yet, take everything
             Seq(
                 mintAndSendPoolTokens(
                     Txn.sender(),
@@ -63,81 +61,28 @@ def get_supply_program():
                 Approve(),
             ),
         )
-        .Else(
-            Seq(
-                to_keep.store(
-                    xMulYDivZ(
-                        Gtxn[token_a_txn_index].asset_amount(),
-                        token_b_before_txn.load(),
-                        token_a_before_txn.load(),
-                    )
-                ),
-                If(
-                    And(
-                        to_keep.load() > Int(0),
-                        Gtxn[token_b_txn_index].asset_amount() >= to_keep.load(),
-                    )
-                )
-                .Then(
-                    Seq(
-                        # keep all A, return remainder B
-                        returnRemainder(
-                            TOKEN_B_KEY,
-                            Gtxn[token_b_txn_index].asset_amount(),
-                            to_keep.load(),
-                        ),
-                        mintAndSendPoolTokens(
-                            Txn.sender(),
-                            xMulYDivZ(
-                                App.globalGet(POOL_TOKENS_OUTSTANDING_KEY),
-                                Gtxn[token_a_txn_index].asset_amount(),
-                                token_a_before_txn.load(),
-                            ),
-                        ),
-                        Approve(),
-                    )
-                )
-                .Else(
-                    Seq(
-                        to_keep.store(
-                            xMulYDivZ(
-                                Gtxn[token_b_txn_index].asset_amount(),
-                                token_a_before_txn.load(),
-                                token_b_before_txn.load(),
-                            )
-                        ),
-                        If(
-                            And(
-                                to_keep.load() > Int(0),
-                                Gtxn[token_a_txn_index].asset_amount()
-                                >= to_keep.load(),
-                            )
-                        ).Then(
-                            Seq(
-                                # keep all B, return remainder A
-                                returnRemainder(
-                                    TOKEN_A_KEY,
-                                    Gtxn[token_a_txn_index].asset_amount(),
-                                    to_keep.load(),
-                                ),
-                                mintAndSendPoolTokens(
-                                    Txn.sender(),
-                                    xMulYDivZ(
-                                        App.globalGet(POOL_TOKENS_OUTSTANDING_KEY),
-                                        Gtxn[token_b_txn_index].asset_amount(),
-                                        token_b_before_txn.load(),
-                                    ),
-                                ),
-                                Approve(),
-                            )
-                        ),
-                    )
-                ),
+        .ElseIf(
+            tryTakeAdjustedAmounts(
+                Gtxn[token_a_txn_index].asset_amount(),
+                token_a_before_txn.load(),
+                TOKEN_B_KEY,
+                Gtxn[token_b_txn_index].asset_amount(),
+                token_b_before_txn.load(),
             )
-        ),
-        Reject(),
+        )
+        .Then(Approve())
+        .ElseIf(
+            tryTakeAdjustedAmounts(
+                Gtxn[token_b_txn_index].asset_amount(),
+                token_b_before_txn.load(),
+                TOKEN_A_KEY,
+                Gtxn[token_a_txn_index].asset_amount(),
+                token_a_before_txn.load(),
+            ),
+        )
+        .Then(Approve())
+        .Else(Reject()),
     )
-
     return on_supply
 
 

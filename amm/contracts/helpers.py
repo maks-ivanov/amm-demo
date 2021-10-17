@@ -67,7 +67,7 @@ def optIn(token_key) -> Expr:
 @Subroutine(TealType.none)
 def returnRemainder(
     token_key, received_amount: TealType.uint64, to_keep_amount: TealType.uint64
-):
+) -> Expr:
     remainder = received_amount - to_keep_amount
     return Seq(
         If(remainder > Int(0)).Then(
@@ -77,6 +77,58 @@ def returnRemainder(
                 remainder,
             )
         ),
+    )
+
+
+@Subroutine(TealType.uint64)
+def tryTakeAdjustedAmounts(
+    to_keep_token_txn_amt: int,
+    to_keep_token_before_txn_amt: int,
+    other_token_key: bytes,
+    other_token_txn_amt: int,
+    other_token_before_txn_amt: int,
+) -> Expr:
+    """
+    Given supplied token amounts, try to keep all of one token and the desired amount of other token
+    as determined by market price before transaction.
+    If successful, mint and sent pool tokens in proportion to new liquidity over old liquidity.
+
+    Return 1 for success, 0 for failure
+    """
+    other_desired_amount = ScratchVar(TealType.uint64)
+
+    return Seq(
+        other_desired_amount.store(
+            xMulYDivZ(
+                to_keep_token_txn_amt,
+                other_token_before_txn_amt,
+                to_keep_token_before_txn_amt,
+            )
+        ),
+        If(
+            And(
+                other_desired_amount.load() > Int(0),
+                other_token_txn_amt >= other_desired_amount.load(),
+            )
+        ).Then(
+            Seq(
+                returnRemainder(
+                    other_token_key,
+                    other_token_txn_amt,
+                    other_desired_amount.load(),
+                ),
+                mintAndSendPoolTokens(
+                    Txn.sender(),
+                    xMulYDivZ(
+                        App.globalGet(POOL_TOKENS_OUTSTANDING_KEY),
+                        to_keep_token_txn_amt,
+                        to_keep_token_before_txn_amt,
+                    ),
+                ),
+                Return(Int(1)),
+            )
+        ),
+        Return(Int(0)),
     )
 
 
