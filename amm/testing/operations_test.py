@@ -22,16 +22,11 @@ def test_create():
 
     tokenA = 1
     tokenB = 2
-    feeBps = -30
     minIncrement = 1000
 
+    feeBps = -30
     with pytest.raises(OverflowError):
         createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
-
-    feeBps = 0
-    with pytest.raises(algosdk.error.AlgodHTTPError) as e:
-        createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
-        assert "logic eval error: assert failed" in str(e)
 
     feeBps = 30
     appID = createAmmApp(

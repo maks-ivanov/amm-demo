@@ -248,8 +248,6 @@ def get_swap_program():
 
 def approval_program():
     on_create = Seq(
-        # no negative fees allowed
-        Assert(Btoi(Txn.application_args[3]) > Int(0)),
         App.globalPut(CREATOR_KEY, Txn.application_args[0]),
         App.globalPut(TOKEN_A_KEY, Btoi(Txn.application_args[1])),
         App.globalPut(TOKEN_B_KEY, Btoi(Txn.application_args[2])),

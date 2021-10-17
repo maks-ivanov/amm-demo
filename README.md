@@ -9,11 +9,13 @@ First liquidity provider can supply tokens in any proportion. Subsequent users s
 Providers can withdraw liquidity at current market rate, i.e. the current ratio of the reserve.
 
 ## TODO
-* Opt users in as part of supply/withdraw/swap workflows
-* Make users cover txn fees for AMM
-* Simplify contract code
-* Tests
-* Docs
+* Features:
+    * Limit fill or kill swaps
+    * "Market buy" orders - specify the exact amount of other token desired, execute at market price
+* Maintenance
+  * Simplify contract code
+  * Tests
+  * Docs
 
 ## Usage
 
