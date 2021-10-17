@@ -51,7 +51,7 @@ def get_supply_program():
         .Then(
             # no liquidity yet, take everything
             Seq(
-                mintAndSendPoolTokens(
+                mintAndSendPoolToken(
                     Txn.sender(),
                     Sqrt(
                         Gtxn[token_a_txn_index].asset_amount()
@@ -93,7 +93,6 @@ def get_withdraw_program():
         token_b_holding,
         Assert(
             And(
-                # the amm has tokens left
                 token_a_holding.hasValue(),
                 token_a_holding.value() > Int(0),
                 token_b_holding.hasValue(),

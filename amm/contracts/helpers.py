@@ -8,7 +8,9 @@ from amm.contracts.config import (
 
 
 @Subroutine(TealType.uint64)
-def validateTokenReceived(transaction_index: TealType.uint64, token_key):
+def validateTokenReceived(
+    transaction_index: TealType.uint64, token_key: TealType.bytes
+) -> Expr:
     return And(
         Gtxn[transaction_index].type_enum() == TxnType.AssetTransfer,
         Gtxn[transaction_index].sender() == Txn.sender(),
@@ -25,7 +27,9 @@ def xMulYDivZ(a, b, c) -> Expr:
 
 
 @Subroutine(TealType.none)
-def sendToken(token_key, receiver, amount) -> Expr:
+def sendToken(
+    token_key: TealType.bytes, receiver: TealType.bytes, amount: TealType.uint64
+) -> Expr:
     return Seq(
         InnerTxnBuilder.Begin(),
         InnerTxnBuilder.SetFields(
@@ -41,7 +45,7 @@ def sendToken(token_key, receiver, amount) -> Expr:
 
 
 @Subroutine(TealType.none)
-def createPoolToken(pool_token_amount: int) -> Expr:
+def createPoolToken(pool_token_amount: TealType.uint64) -> Expr:
     return Seq(
         InnerTxnBuilder.Begin(),
         InnerTxnBuilder.SetFields(
@@ -60,13 +64,15 @@ def createPoolToken(pool_token_amount: int) -> Expr:
 
 
 @Subroutine(TealType.none)
-def optIn(token_key) -> Expr:
+def optIn(token_key: TealType.bytes) -> Expr:
     return sendToken(token_key, Global.current_application_address(), Int(0))
 
 
 @Subroutine(TealType.none)
 def returnRemainder(
-    token_key, received_amount: TealType.uint64, to_keep_amount: TealType.uint64
+    token_key: TealType.bytes,
+    received_amount: TealType.uint64,
+    to_keep_amount: TealType.uint64,
 ) -> Expr:
     remainder = received_amount - to_keep_amount
     return Seq(
@@ -82,18 +88,16 @@ def returnRemainder(
 
 @Subroutine(TealType.uint64)
 def tryTakeAdjustedAmounts(
-    to_keep_token_txn_amt: int,
-    to_keep_token_before_txn_amt: int,
-    other_token_key: bytes,
-    other_token_txn_amt: int,
-    other_token_before_txn_amt: int,
+    to_keep_token_txn_amt: TealType.uint64,
+    to_keep_token_before_txn_amt: TealType.uint64,
+    other_token_key: TealType.bytes,
+    other_token_txn_amt: TealType.uint64,
+    other_token_before_txn_amt: TealType.uint64,
 ) -> Expr:
     """
     Given supplied token amounts, try to keep all of one token and the desired amount of other token
-    as determined by market price before transaction.
+    as determined by market price before transaction. If desired amount is less than supplied, send the remainder back.
     If successful, mint and sent pool tokens in proportion to new liquidity over old liquidity.
-
-    Return 1 for success, 0 for failure
     """
     other_desired_amount = ScratchVar(TealType.uint64)
 
@@ -117,7 +121,7 @@ def tryTakeAdjustedAmounts(
                     other_token_txn_amt,
                     other_desired_amount.load(),
                 ),
-                mintAndSendPoolTokens(
+                mintAndSendPoolToken(
                     Txn.sender(),
                     xMulYDivZ(
                         App.globalGet(POOL_TOKENS_OUTSTANDING_KEY),
@@ -134,13 +138,13 @@ def tryTakeAdjustedAmounts(
 
 @Subroutine(TealType.none)
 def withdrawGivenPoolToken(
-    receiver: Expr,
-    token_key: TealType.bytes,
+    receiver: TealType.bytes,
+    to_withdraw_token_key: TealType.bytes,
     pool_token_amount: TealType.uint64,
     pool_tokens_outstanding: TealType.uint64,
 ) -> Expr:
     token_holding = AssetHolding.balance(
-        Global.current_application_address(), App.globalGet(token_key)
+        Global.current_application_address(), App.globalGet(to_withdraw_token_key)
     )
     return Seq(
         token_holding,
@@ -162,7 +166,7 @@ def withdrawGivenPoolToken(
                     > Int(0)
                 ),
                 sendToken(
-                    token_key,
+                    to_withdraw_token_key,
                     receiver,
                     xMulYDivZ(
                         token_holding.value(),
@@ -198,7 +202,7 @@ def computeOtherTokenOutputPerGivenTokenInput(
 
 
 @Subroutine(TealType.none)
-def mintAndSendPoolTokens(receiver: Expr, amount) -> Expr:
+def mintAndSendPoolToken(receiver: TealType.bytes, amount: TealType.uint64) -> Expr:
     return Seq(
         sendToken(POOL_TOKEN_KEY, receiver, amount),
         App.globalPut(
