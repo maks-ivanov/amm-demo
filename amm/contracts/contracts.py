@@ -249,21 +249,19 @@ def get_swap_program():
 def approval_program():
     on_create = Seq(
         # no negative fees allowed
-        Assert(Btoi(Txn.application_args[4]) > Int(0)),
+        Assert(Btoi(Txn.application_args[3]) > Int(0)),
         App.globalPut(CREATOR_KEY, Txn.application_args[0]),
         App.globalPut(TOKEN_A_KEY, Btoi(Txn.application_args[1])),
         App.globalPut(TOKEN_B_KEY, Btoi(Txn.application_args[2])),
-        App.globalPut(POOL_TOKEN_KEY, Btoi(Txn.application_args[3])),
-        App.globalPut(FEE_BPS_KEY, Btoi(Txn.application_args[4])),
-        App.globalPut(MIN_INCREMENT_KEY, Btoi(Txn.application_args[5])),
-        App.globalPut(POOL_TOKENS_OUTSTANDING_KEY, Int(0)),
+        App.globalPut(FEE_BPS_KEY, Btoi(Txn.application_args[3])),
+        App.globalPut(MIN_INCREMENT_KEY, Btoi(Txn.application_args[4])),
         Approve(),
     )
 
     on_setup = Seq(
+        createPoolToken(POOL_TOKEN_DEFAULT_AMOUNT),
         optIn(TOKEN_A_KEY),
         optIn(TOKEN_B_KEY),
-        optIn(POOL_TOKEN_KEY),
         Approve(),
     )
 

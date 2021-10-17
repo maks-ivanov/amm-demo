@@ -6,7 +6,7 @@ import pytest
 from algosdk import account, encoding
 from algosdk.logic import get_application_address
 
-from amm.operations import createAmmApp, setupAmmApp, supply, withdraw, swap, closeAmm
+from amm.operations import createAmmApp, setupAmmApp, supply, withdraw, swap, closeAmm, optInToPoolToken
 from amm.util import getBalances, getAppGlobalState, getLastBlockTimestamp
 from amm.testing.setup import getAlgodClient
 from amm.testing.resources import getTemporaryAccount, optInToAsset, createDummyAsset
@@ -22,33 +22,29 @@ def test_create():
 
     tokenA = 1
     tokenB = 2
-    poolToken = 3
     feeBps = -30
     minIncrement = 1000
 
     with pytest.raises(OverflowError):
-        createAmmApp(client, creator, tokenA, tokenB, poolToken, feeBps, minIncrement)
+        createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
 
     feeBps = 0
     with pytest.raises(algosdk.error.AlgodHTTPError) as e:
-        createAmmApp(client, creator, tokenA, tokenB, poolToken, feeBps, minIncrement)
+        createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
         assert "logic eval error: assert failed" in str(e)
 
     feeBps = 30
     appID = createAmmApp(
-        client, creator, tokenA, tokenB, poolToken, feeBps, minIncrement
+        client, creator, tokenA, tokenB, feeBps, minIncrement
     )
 
-    # fee too high?
     actual = getAppGlobalState(client, appID)
     expected = {
         b"creator_key": encoding.decode_address(creator.getAddress()),
         b"token_a_key": tokenA,
         b"token_b_key": tokenB,
-        b"pool_token_key": poolToken,
         b"fee_bps_key": feeBps,
         b"min_increment_key": minIncrement,
-        b"pool_tokens_outstanding_key": 0,
     }
 
     assert actual == expected
@@ -65,23 +61,19 @@ def test_setup():
     poolTokenAmount = 10 ** 13
     tokenA = createDummyAsset(client, tokenAAmount, funder)
     tokenB = createDummyAsset(client, tokenBAmount, funder)
-    poolToken = createDummyAsset(client, poolTokenAmount, funder)
     feeBps = 30
     minIncrement = 1000
 
-    # might be an issue - pool tokens are created and deposited separately
     appID = createAmmApp(
-        client, creator, tokenA, tokenB, poolToken, feeBps, minIncrement
+        client, creator, tokenA, tokenB, feeBps, minIncrement
     )
 
-    setupAmmApp(
+    poolToken = setupAmmApp(
         client=client,
         appID=appID,
         funder=funder,
         tokenA=tokenA,
         tokenB=tokenB,
-        poolToken=poolToken,
-        poolTokenAmount=poolTokenAmount,
     )
 
     actualState = getAppGlobalState(client, appID)
@@ -98,24 +90,22 @@ def test_setup():
     assert actualState == expectedState
 
     actualBalances = getBalances(client, get_application_address(appID))
-    # todo
-    expectedBalances = {0: 1_100_000, tokenA: 0, tokenB: 0, poolToken: poolTokenAmount}
+    expectedBalances = {0: 400_000, tokenA: 0, tokenB: 0, poolToken: poolTokenAmount}
 
     assert actualBalances == expectedBalances
 
 
-def test_before_setup():
+def test_not_setup():
     client = getAlgodClient()
     creator = getTemporaryAccount(client)
 
     tokenA = 1
     tokenB = 2
-    poolToken = 3
     feeBps = 30
     minIncrement = 1000
 
     appID = createAmmApp(
-        client, creator, tokenA, tokenB, poolToken, feeBps, minIncrement
+        client, creator, tokenA, tokenB, feeBps, minIncrement
     )
 
     ops = [
@@ -125,9 +115,9 @@ def test_before_setup():
     ]
 
     for op in ops:
-        with pytest.raises(algosdk.error.AlgodHTTPError) as e:
+        with pytest.raises(AssertionError) as e:
             op()
-            assert "logic eval error: assert failed" in str(e)
+            assert "Pool token id doesn't exist. Make sure the AMM has been set up" == str(e)
 
     closeAmm(client, appID, creator)
 
@@ -139,27 +129,24 @@ def test_supply():
 
     tokenAAmount = 1_000_000
     tokenBAmount = 2_000_000
-    poolTokenAmount = 10 ** 13
     tokenA = createDummyAsset(client, tokenAAmount, creator)
     tokenB = createDummyAsset(client, tokenBAmount, creator)
-    poolToken = createDummyAsset(client, poolTokenAmount, creator)
     feeBps = 30
     minIncrement = 1000
 
     appID = createAmmApp(
-        client, creator, tokenA, tokenB, poolToken, feeBps, minIncrement
+        client, creator, tokenA, tokenB, feeBps, minIncrement
     )
 
-    setupAmmApp(
+    poolToken = setupAmmApp(
         client=client,
         appID=appID,
         funder=creator,
         tokenA=tokenA,
         tokenB=tokenB,
-        poolToken=poolToken,
-        poolTokenAmount=poolTokenAmount,
     )
 
+    optInToPoolToken(client, appID, creator)
     supply(client, appID, 1000, 2000, creator)
     actualTokensOutstanding = getAppGlobalState(client, appID)[
         b"pool_tokens_outstanding_key"
@@ -202,27 +189,24 @@ def test_withdraw():
 
     tokenAAmount = 1_000_000
     tokenBAmount = 2_000_000
-    poolTokenAmount = 10 ** 13
     tokenA = createDummyAsset(client, tokenAAmount, creator)
     tokenB = createDummyAsset(client, tokenBAmount, creator)
-    poolToken = createDummyAsset(client, poolTokenAmount, creator)
     feeBps = 30
     minIncrement = 1000
 
     appID = createAmmApp(
-        client, creator, tokenA, tokenB, poolToken, feeBps, minIncrement
+        client, creator, tokenA, tokenB, feeBps, minIncrement
     )
 
-    setupAmmApp(
+    poolToken = setupAmmApp(
         client=client,
         appID=appID,
         funder=creator,
         tokenA=tokenA,
         tokenB=tokenB,
-        poolToken=poolToken,
-        poolTokenAmount=poolTokenAmount,
     )
 
+    optInToPoolToken(client, appID, creator)
     supply(client, appID, 1000, 2000, creator)
     initialPoolTokensOutstanding = int(sqrt(1000 * 2000))
 
@@ -267,27 +251,24 @@ def test_swap():
     creator = getTemporaryAccount(client)
     tokenAAmount = 1_000_000_000
     tokenBAmount = 2_000_000_000
-    poolTokenAmount = 10 ** 13
     tokenA = createDummyAsset(client, tokenAAmount, creator)
     tokenB = createDummyAsset(client, tokenBAmount, creator)
-    poolToken = createDummyAsset(client, poolTokenAmount, creator)
     feeBps = 30
     minIncrement = 1000
 
     appID = createAmmApp(
-        client, creator, tokenA, tokenB, poolToken, feeBps, minIncrement
+        client, creator, tokenA, tokenB, feeBps, minIncrement
     )
 
-    setupAmmApp(
+    poolToken = setupAmmApp(
         client=client,
         appID=appID,
         funder=creator,
         tokenA=tokenA,
         tokenB=tokenB,
-        poolToken=poolToken,
-        poolTokenAmount=poolTokenAmount,
     )
 
+    optInToPoolToken(client, appID, creator)
     m, n = 100_000_000, 200_000_000
     supply(client, appID, m, n, creator)
 

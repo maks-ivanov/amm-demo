@@ -39,6 +39,24 @@ def sendToken(token_key, receiver, amount) -> Expr:
         InnerTxnBuilder.Submit(),
     )
 
+@Subroutine(TealType.none)
+def createPoolToken(pool_token_amount) -> Expr:
+    return Seq(
+        InnerTxnBuilder.Begin(),
+        InnerTxnBuilder.SetFields(
+            {
+                TxnField.type_enum: TxnType.AssetConfig,
+                TxnField.config_asset_total: pool_token_amount,
+                TxnField.config_asset_default_frozen: Int(0),
+                TxnField.config_asset_decimals: Int(0),
+                TxnField.config_asset_reserve: Global.current_application_address(),
+            }
+        ),
+        InnerTxnBuilder.Submit(),
+        App.globalPut(POOL_TOKEN_KEY, InnerTxn.created_asset_id()),
+        App.globalPut(POOL_TOKENS_OUTSTANDING_KEY, Int(0)),
+    )
+
 
 @Subroutine(TealType.none)
 def optIn(token_key) -> Expr:

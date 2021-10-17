@@ -10,12 +10,18 @@ from amm.contracts.contracts import approval_program, clear_state_program
 from .util import (
     waitForTransaction,
     fullyCompileContract,
-    getAppGlobalState,
+    getAppGlobalState, getBalances,
 )
 
 APPROVAL_PROGRAM = b""
 CLEAR_STATE_PROGRAM = b""
 
+MIN_BALANCE_REQUIREMENT = (
+    # min account balance
+    100_000
+    # additional min balance for 3 assets
+    + 100_000 * 3
+)
 
 def getContracts(client: AlgodClient) -> Tuple[bytes, bytes]:
     """Get the compiled TEAL contracts for the amm.
@@ -42,7 +48,6 @@ def createAmmApp(
     creator: Account,
     tokenA: int,
     tokenB: int,
-    poolToken: int,
     feeBps: int,
     minIncrement: int,
 ) -> int:
@@ -53,7 +58,6 @@ def createAmmApp(
         creator: The account that will create the amm application.
         tokenA: The id of token A in the liquidity pool,
         tokenB: The id of token A in the liquidity pool,
-        poolToken: The id of pool token
         feeBps: The basis point fee to be charged per swap
 
     Returns:
@@ -69,7 +73,6 @@ def createAmmApp(
         encoding.decode_address(creator.getAddress()),
         tokenA.to_bytes(8, "big"),
         tokenB.to_bytes(8, "big"),
-        poolToken.to_bytes(8, "big"),
         feeBps.to_bytes(8, "big"),
         minIncrement.to_bytes(8, "big"),
     ]
@@ -100,17 +103,11 @@ def setupAmmApp(
     funder: Account,
     tokenA: int,
     tokenB: int,
-    poolToken,
-    poolTokenAmount,
-) -> None:
+) -> int:
     """Finish setting up an amm.
 
-    This operation funds the pool account opts that account into
-    both tokens and pool token, and sends the NFT to the escrow account, all in one atomic
-    transaction group.
-
-    The escrow account requires a total of 0.203 Algos for funding. See the code
-    below for a breakdown of this amount.
+    This operation funds the pool account, creates pool token,
+    and opts app into tokens A and B, all in one atomic transaction group.
 
     Args:
         client: An algod client.
@@ -118,20 +115,15 @@ def setupAmmApp(
         funder: The account providing the funding for the escrow account.
         tokenA: Token A id.
         tokenB: Token B id.
-        poolToken: Pool token id.
+    Return: pool token id
     """
     appAddr = get_application_address(appID)
 
     suggestedParams = client.suggested_params()
 
-    fundingAmount = (
-        # min account balance
-        100_000
-        # additional min balance to opt into tokens
-        + 1_000 * 3
-        # 1000 * min txn fee
-        + 1_000 * 1_000
-    )
+    fundingAmount = (MIN_BALANCE_REQUIREMENT
+    # additional balance to create pool token and opt into tokens A and B
+    + 1_000 * 3)
 
     fundAppTxn = transaction.PaymentTxn(
         sender=funder.getAddress(),
@@ -145,25 +137,41 @@ def setupAmmApp(
         index=appID,
         on_complete=transaction.OnComplete.NoOpOC,
         app_args=[b"setup"],
-        foreign_assets=[tokenA, tokenB, poolToken],
+        foreign_assets=[tokenA, tokenB],
         sp=suggestedParams,
     )
-    fundPoolTokenTxn = transaction.AssetTransferTxn(
-        sender=funder.getAddress(),
-        receiver=appAddr,
-        index=poolToken,
-        amt=poolTokenAmount,
-        sp=suggestedParams,
-    )
-    transaction.assign_group_id([fundAppTxn, setupTxn, fundPoolTokenTxn])
+
+    transaction.assign_group_id([fundAppTxn, setupTxn])
 
     signedFundAppTxn = fundAppTxn.sign(funder.getPrivateKey())
     signedSetupTxn = setupTxn.sign(funder.getPrivateKey())
-    signedPoolTokenTxn = fundPoolTokenTxn.sign(funder.getPrivateKey())
 
-    client.send_transactions([signedFundAppTxn, signedSetupTxn, signedPoolTokenTxn])
+    client.send_transactions([signedFundAppTxn, signedSetupTxn])
 
     waitForTransaction(client, signedFundAppTxn.get_txid())
+
+    appGlobalState = getAppGlobalState(client, appID)
+    poolToken = appGlobalState[b'pool_token_key']
+
+    return poolToken
+
+
+def optInToPoolToken(client: AlgodClient, appID: int, account: Account):
+    assertSetup(client, appID)
+    appGlobalState = getAppGlobalState(client, appID)
+    suggestedParams = client.suggested_params()
+    poolToken = getPoolTokenId(appGlobalState)
+
+    optInTxn = transaction.AssetOptInTxn(
+        sender=account.getAddress(),
+        index=poolToken,
+        sp=suggestedParams
+    )
+
+    signedOptInTxn = optInTxn.sign(account.getPrivateKey())
+
+    client.send_transaction(signedOptInTxn)
+    waitForTransaction(client, signedOptInTxn.get_txid())
 
 
 def supply(
@@ -186,13 +194,17 @@ def supply(
         qB: amount of token B to supply to the pool
         supplier: supplier account
     """
+    assertSetup(client, appID)
     appAddr = get_application_address(appID)
     appGlobalState = getAppGlobalState(client, appID)
     suggestedParams = client.suggested_params()
 
     tokenA = appGlobalState[b"token_a_key"]
     tokenB = appGlobalState[b"token_b_key"]
-    poolToken = appGlobalState[b"pool_token_key"]
+    try:
+        poolToken = getPoolTokenId(appGlobalState)
+    except KeyError:
+        raise RuntimeError("Pool token id doesn't exist. Make sure the pool has been set up")
 
     # pay for the fee incurred by AMM for sending back the pool token
     feeTxn = transaction.PaymentTxn(
@@ -250,6 +262,7 @@ def withdraw(
         poolTokenAmount: pool token quantity,
         withdrawAccount: supplier account,
     """
+    assertSetup(client, appID)
     appAddr = get_application_address(appID)
     appGlobalState = getAppGlobalState(client, appID)
     suggestedParams = client.suggested_params()
@@ -264,7 +277,7 @@ def withdraw(
 
     tokenA = appGlobalState[b"token_a_key"]
     tokenB = appGlobalState[b"token_b_key"]
-    poolToken = appGlobalState[b"pool_token_key"]
+    poolToken = getPoolTokenId(appGlobalState)
 
     poolTokenTxn = transaction.AssetTransferTxn(
         sender=withdrawAccount.getAddress(),
@@ -297,6 +310,7 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
     This action can only happen if there is liquidity in the pool
     A 0.30% fee is taken out of the input amount before calculating the output amount
     """
+    assertSetup(client, appID)
     appAddr = get_application_address(appID)
     appGlobalState = getAppGlobalState(client, appID)
     suggestedParams = client.suggested_params()
@@ -348,12 +362,6 @@ def closeAmm(client: AlgodClient, appID: int, closer: Account):
         closer: closer account. Must be the original creator of the pool.
     """
 
-    appGlobalState = getAppGlobalState(client, appID)
-    pool_tokens_outstanding = appGlobalState[b"pool_tokens_outstanding_key"]
-    if pool_tokens_outstanding > 0:
-        print("Cannot close AMM, liquidity remaining")
-        return
-
     deleteTxn = transaction.ApplicationDeleteTxn(
         sender=closer.getAddress(),
         index=appID,
@@ -364,3 +372,13 @@ def closeAmm(client: AlgodClient, appID: int, closer: Account):
     client.send_transaction(signedDeleteTxn)
 
     waitForTransaction(client, signedDeleteTxn.get_txid())
+
+def getPoolTokenId(appGlobalState):
+    try:
+        return appGlobalState[b"pool_token_key"]
+    except KeyError:
+        raise RuntimeError("Pool token id doesn't exist. Make sure the app has been set up")
+
+def assertSetup(client: AlgodClient, appID: int) -> None:
+    balances = getBalances(client, get_application_address(appID))
+    assert balances[0] >= MIN_BALANCE_REQUIREMENT, 'AMM must be set up and funded first. AMM balances: ' + str(balances)

@@ -2,7 +2,7 @@ from time import time, sleep
 
 from algosdk import account, encoding
 from algosdk.logic import get_application_address
-from amm.operations import createAmmApp, setupAmmApp, supply, withdraw, swap, closeAmm
+from amm.operations import createAmmApp, setupAmmApp, supply, withdraw, swap, closeAmm, optInToPoolToken
 from amm.util import (
     getBalances,
     getAppGlobalState,
@@ -28,10 +28,8 @@ def simple_amm():
     tokenBAmount = 10 ** 13
     tokenA = createDummyAsset(client, tokenBAmount, creator)
     tokenB = createDummyAsset(client, tokenBAmount, creator)
-    poolToken = createDummyAsset(client, tokenAAmount, creator)
     print("TokenA id is:", tokenA)
     print("TokenB id is:", tokenB)
-    print("Pool token id is:", poolToken)
 
     print("Alice is creating AMM that swaps between token A and token B...")
     appID = createAmmApp(
@@ -39,20 +37,8 @@ def simple_amm():
         creator=creator,
         tokenA=tokenA,
         tokenB=tokenB,
-        poolToken=poolToken,
         feeBps=30,
         minIncrement=1000,
-    )
-
-    print("Alice is setting up and funding amm...")
-    setupAmmApp(
-        client=client,
-        appID=appID,
-        funder=creator,
-        tokenA=tokenA,
-        tokenB=tokenB,
-        poolToken=poolToken,
-        poolTokenAmount=tokenAAmount,
     )
 
     creatorBalancesBefore = getBalances(client, creator.getAddress())
@@ -60,6 +46,23 @@ def simple_amm():
 
     print("Alice's balances: ", creatorBalancesBefore)
     print("AMM's balances: ", ammBalancesBefore)
+
+    print("Alice is setting up and funding amm...")
+    poolToken = setupAmmApp(
+        client=client,
+        appID=appID,
+        funder=creator,
+        tokenA=tokenA,
+        tokenB=tokenB,
+    )
+
+    creatorBalancesBefore = getBalances(client, creator.getAddress())
+    ammBalancesBefore = getBalances(client, get_application_address(appID))
+
+    print("Alice's balances: ", creatorBalancesBefore)
+    print("AMM's balances: ", ammBalancesBefore)
+    print("Opting Alice in to receive pool token...")
+    optInToPoolToken(client, appID, creator)
 
     print("Supplying AMM with initial token A and token B")
     supply(client=client, appID=appID, qA=500_000, qB=100_000_000, supplier=creator)
