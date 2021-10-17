@@ -212,19 +212,19 @@ def approval_program():
     on_withdraw = get_withdraw_program()
     on_swap = get_swap_program()
 
-    on_delete = Seq(
-        If(App.globalGet(POOL_TOKENS_OUTSTANDING_KEY) == Int(0)).Then(
-            Seq(Assert(Txn.sender() == App.globalGet(CREATOR_KEY)), Approve())
-        ),
-        Reject(),
-    )
-
     on_call_method = Txn.application_args[0]
     on_call = Cond(
         [on_call_method == Bytes("setup"), on_setup],
         [on_call_method == Bytes("supply"), on_supply],
         [on_call_method == Bytes("withdraw"), on_withdraw],
         [on_call_method == Bytes("swap"), on_swap],
+    )
+
+    on_delete = Seq(
+        If(App.globalGet(POOL_TOKENS_OUTSTANDING_KEY) == Int(0)).Then(
+            Seq(Assert(Txn.sender() == App.globalGet(CREATOR_KEY)), Approve())
+        ),
+        Reject(),
     )
 
     program = Cond(
