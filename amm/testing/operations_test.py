@@ -6,7 +6,15 @@ import pytest
 from algosdk import account, encoding
 from algosdk.logic import get_application_address
 
-from amm.operations import createAmmApp, setupAmmApp, supply, withdraw, swap, closeAmm, optInToPoolToken
+from amm.operations import (
+    createAmmApp,
+    setupAmmApp,
+    supply,
+    withdraw,
+    swap,
+    closeAmm,
+    optInToPoolToken,
+)
 from amm.util import getBalances, getAppGlobalState, getLastBlockTimestamp
 from amm.testing.setup import getAlgodClient
 from amm.testing.resources import getTemporaryAccount, optInToAsset, createDummyAsset
@@ -29,9 +37,7 @@ def test_create():
         createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
 
     feeBps = 30
-    appID = createAmmApp(
-        client, creator, tokenA, tokenB, feeBps, minIncrement
-    )
+    appID = createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
 
     actual = getAppGlobalState(client, appID)
     expected = {
@@ -59,9 +65,7 @@ def test_setup():
     feeBps = 30
     minIncrement = 1000
 
-    appID = createAmmApp(
-        client, creator, tokenA, tokenB, feeBps, minIncrement
-    )
+    appID = createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
 
     poolToken = setupAmmApp(
         client=client,
@@ -99,9 +103,7 @@ def test_not_setup():
     feeBps = 30
     minIncrement = 1000
 
-    appID = createAmmApp(
-        client, creator, tokenA, tokenB, feeBps, minIncrement
-    )
+    appID = createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
 
     ops = [
         lambda: supply(client, appID, 10, 10, creator),
@@ -112,7 +114,10 @@ def test_not_setup():
     for op in ops:
         with pytest.raises(AssertionError) as e:
             op()
-            assert "Pool token id doesn't exist. Make sure the AMM has been set up" == str(e)
+            assert (
+                "Pool token id doesn't exist. Make sure the AMM has been set up"
+                == str(e)
+            )
 
     closeAmm(client, appID, creator)
 
@@ -129,9 +134,7 @@ def test_supply():
     feeBps = 30
     minIncrement = 1000
 
-    appID = createAmmApp(
-        client, creator, tokenA, tokenB, feeBps, minIncrement
-    )
+    appID = createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
 
     poolToken = setupAmmApp(
         client=client,
@@ -189,9 +192,7 @@ def test_withdraw():
     feeBps = 30
     minIncrement = 1000
 
-    appID = createAmmApp(
-        client, creator, tokenA, tokenB, feeBps, minIncrement
-    )
+    appID = createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
 
     poolToken = setupAmmApp(
         client=client,
@@ -251,9 +252,7 @@ def test_swap():
     feeBps = 30
     minIncrement = 1000
 
-    appID = createAmmApp(
-        client, creator, tokenA, tokenB, feeBps, minIncrement
-    )
+    appID = createAmmApp(client, creator, tokenA, tokenB, feeBps, minIncrement)
 
     poolToken = setupAmmApp(
         client=client,

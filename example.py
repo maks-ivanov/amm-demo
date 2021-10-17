@@ -2,7 +2,15 @@ from time import time, sleep
 
 from algosdk import account, encoding
 from algosdk.logic import get_application_address
-from amm.operations import createAmmApp, setupAmmApp, supply, withdraw, swap, closeAmm, optInToPoolToken
+from amm.operations import (
+    createAmmApp,
+    setupAmmApp,
+    supply,
+    withdraw,
+    swap,
+    closeAmm,
+    optInToPoolToken,
+)
 from amm.util import (
     getBalances,
     getAppGlobalState,

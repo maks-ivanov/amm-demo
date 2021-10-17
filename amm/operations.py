@@ -10,7 +10,8 @@ from amm.contracts.contracts import approval_program, clear_state_program
 from .util import (
     waitForTransaction,
     fullyCompileContract,
-    getAppGlobalState, getBalances,
+    getAppGlobalState,
+    getBalances,
 )
 
 APPROVAL_PROGRAM = b""
@@ -22,6 +23,7 @@ MIN_BALANCE_REQUIREMENT = (
     # additional min balance for 3 assets
     + 100_000 * 3
 )
+
 
 def getContracts(client: AlgodClient) -> Tuple[bytes, bytes]:
     """Get the compiled TEAL contracts for the amm.
@@ -121,9 +123,11 @@ def setupAmmApp(
 
     suggestedParams = client.suggested_params()
 
-    fundingAmount = (MIN_BALANCE_REQUIREMENT
-    # additional balance to create pool token and opt into tokens A and B
-    + 1_000 * 3)
+    fundingAmount = (
+        MIN_BALANCE_REQUIREMENT
+        # additional balance to create pool token and opt into tokens A and B
+        + 1_000 * 3
+    )
 
     fundAppTxn = transaction.PaymentTxn(
         sender=funder.getAddress(),
@@ -151,7 +155,7 @@ def setupAmmApp(
     waitForTransaction(client, signedFundAppTxn.get_txid())
 
     appGlobalState = getAppGlobalState(client, appID)
-    poolToken = appGlobalState[b'pool_token_key']
+    poolToken = appGlobalState[b"pool_token_key"]
 
     return poolToken
 
@@ -163,9 +167,7 @@ def optInToPoolToken(client: AlgodClient, appID: int, account: Account):
     poolToken = getPoolTokenId(appGlobalState)
 
     optInTxn = transaction.AssetOptInTxn(
-        sender=account.getAddress(),
-        index=poolToken,
-        sp=suggestedParams
+        sender=account.getAddress(), index=poolToken, sp=suggestedParams
     )
 
     signedOptInTxn = optInTxn.sign(account.getPrivateKey())
@@ -204,7 +206,9 @@ def supply(
     try:
         poolToken = getPoolTokenId(appGlobalState)
     except KeyError:
-        raise RuntimeError("Pool token id doesn't exist. Make sure the pool has been set up")
+        raise RuntimeError(
+            "Pool token id doesn't exist. Make sure the pool has been set up"
+        )
 
     # pay for the fee incurred by AMM for sending back the pool token
     feeTxn = transaction.PaymentTxn(
@@ -373,12 +377,18 @@ def closeAmm(client: AlgodClient, appID: int, closer: Account):
 
     waitForTransaction(client, signedDeleteTxn.get_txid())
 
+
 def getPoolTokenId(appGlobalState):
     try:
         return appGlobalState[b"pool_token_key"]
     except KeyError:
-        raise RuntimeError("Pool token id doesn't exist. Make sure the app has been set up")
+        raise RuntimeError(
+            "Pool token id doesn't exist. Make sure the app has been set up"
+        )
+
 
 def assertSetup(client: AlgodClient, appID: int) -> None:
     balances = getBalances(client, get_application_address(appID))
-    assert balances[0] >= MIN_BALANCE_REQUIREMENT, 'AMM must be set up and funded first. AMM balances: ' + str(balances)
+    assert (
+        balances[0] >= MIN_BALANCE_REQUIREMENT
+    ), "AMM must be set up and funded first. AMM balances: " + str(balances)

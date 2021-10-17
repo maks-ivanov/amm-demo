@@ -39,6 +39,7 @@ def sendToken(token_key, receiver, amount) -> Expr:
         InnerTxnBuilder.Submit(),
     )
 
+
 @Subroutine(TealType.none)
 def createPoolToken(pool_token_amount) -> Expr:
     return Seq(
