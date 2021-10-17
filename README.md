@@ -8,19 +8,19 @@ First liquidity provider can supply tokens in any proportion. Subsequent users s
 
 Providers can withdraw liquidity at current market rate, i.e. the current ratio of the reserve.
 
-## TODO
-* Features:
-    * Limit fill or kill swaps
-    * "Market buy" orders - specify the exact amount of other token desired, execute at market price
-* Maintenance
-  * Simplify contract code
-  * Tests
-  * Docs
-
 ## Usage
 
 The file `amm/operations.py` provides a set of functions that can be used to create and interact
 with AMM. See that file for documentation.
+
+## ToDo
+* Features:
+    * Limit fill or kill swaps
+    * "Market buy" orders - specify the exact amount of other token desired, execute at market price
+* Maintenance
+    * Simplify contract code
+    * Tests
+    * Docs
 
 ## Development Setup
 

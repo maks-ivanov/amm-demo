@@ -203,12 +203,7 @@ def supply(
 
     tokenA = appGlobalState[b"token_a_key"]
     tokenB = appGlobalState[b"token_b_key"]
-    try:
-        poolToken = getPoolTokenId(appGlobalState)
-    except KeyError:
-        raise RuntimeError(
-            "Pool token id doesn't exist. Make sure the pool has been set up"
-        )
+    poolToken = getPoolTokenId(appGlobalState)
 
     # pay for the fee incurred by AMM for sending back the pool token
     feeTxn = transaction.PaymentTxn(
@@ -275,7 +270,7 @@ def withdraw(
     feeTxn = transaction.PaymentTxn(
         sender=withdrawAccount.getAddress(),
         receiver=appAddr,
-        amt=1_000 * 3,
+        amt=2_000,
         sp=suggestedParams,
     )
 
@@ -312,7 +307,7 @@ def withdraw(
 def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Account):
     """Swap tokenId token for the other token in the pool
     This action can only happen if there is liquidity in the pool
-    A 0.30% fee is taken out of the input amount before calculating the output amount
+    A fee (in bps, configured on app creation) is taken out of the input amount before calculating the output amount
     """
     assertSetup(client, appID)
     appAddr = get_application_address(appID)
@@ -322,7 +317,7 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
     feeTxn = transaction.PaymentTxn(
         sender=trader.getAddress(),
         receiver=appAddr,
-        amt=1_000 * 2,
+        amt=1000,
         sp=suggestedParams,
     )
 
