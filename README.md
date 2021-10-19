@@ -15,8 +15,9 @@ with AMM. See that file for documentation.
 
 ## ToDo
 * Features:
-    * Limit fill or kill swaps
-    * "Market buy" orders - specify the exact amount of other token desired, execute at market price
+    * "Minimum received" swaps
+    * "Exact received" swaps
+    * Price range for supplying liquidity
 * Maintenance
     * Simplify contract code
     * Tests

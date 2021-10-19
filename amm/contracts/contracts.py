@@ -200,13 +200,7 @@ def approval_program():
         Approve(),
     )
 
-    on_setup = Seq(
-        createPoolToken(POOL_TOKEN_DEFAULT_AMOUNT),
-        optIn(TOKEN_A_KEY),
-        optIn(TOKEN_B_KEY),
-        Approve(),
-    )
-
+    on_setup = get_setup_program()
     on_supply = get_supply_program()
     on_withdraw = get_withdraw_program()
     on_swap = get_swap_program()
@@ -241,6 +235,25 @@ def approval_program():
     )
 
     return program
+
+
+def get_setup_program():
+    # if the amm has been set up already, pool token id and outstanding value exists
+    pool_token_id = App.globalGetEx(Global.current_application_id(), POOL_TOKEN_KEY)
+    pool_tokens_outstanding = App.globalGetEx(
+        Global.current_application_id(), POOL_TOKENS_OUTSTANDING_KEY
+    )
+    return Seq(
+        pool_token_id,
+        pool_tokens_outstanding,
+        # can only set up once
+        Assert(Not(pool_token_id.hasValue())),
+        Assert(Not(pool_tokens_outstanding.hasValue())),
+        createPoolToken(POOL_TOKEN_DEFAULT_AMOUNT),
+        optIn(TOKEN_A_KEY),
+        optIn(TOKEN_B_KEY),
+        Approve(),
+    )
 
 
 def clear_state_program():
