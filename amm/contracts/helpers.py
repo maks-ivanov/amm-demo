@@ -22,8 +22,8 @@ def validateTokenReceived(
 
 
 @Subroutine(TealType.uint64)
-def xMulYDivZ(a, b, c) -> Expr:
-    return WideRatio([a, b, SCALING_FACTOR], [c, SCALING_FACTOR])
+def xMulYDivZ(x, y, z) -> Expr:
+    return WideRatio([x, y, SCALING_FACTOR], [z, SCALING_FACTOR])
 
 
 @Subroutine(TealType.none)
