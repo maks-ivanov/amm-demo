@@ -95,14 +95,14 @@ def tryTakeAdjustedAmounts(
     other_token_before_txn_amt: TealType.uint64,
 ) -> Expr:
     """
-    Given supplied token amounts, try to keep all of one token and the desired amount of other token
+    Given supplied token amounts, try to keep all of one token and the corresponding amount of other token
     as determined by market price before transaction. If desired amount is less than supplied, send the remainder back.
     If successful, mint and sent pool tokens in proportion to new liquidity over old liquidity.
     """
-    other_desired_amount = ScratchVar(TealType.uint64)
+    other_corresponding_amount = ScratchVar(TealType.uint64)
 
     return Seq(
-        other_desired_amount.store(
+        other_corresponding_amount.store(
             xMulYDivZ(
                 to_keep_token_txn_amt,
                 other_token_before_txn_amt,
@@ -111,15 +111,15 @@ def tryTakeAdjustedAmounts(
         ),
         If(
             And(
-                other_desired_amount.load() > Int(0),
-                other_token_txn_amt >= other_desired_amount.load(),
+                other_corresponding_amount.load() > Int(0),
+                other_token_txn_amt >= other_corresponding_amount.load(),
             )
         ).Then(
             Seq(
                 returnRemainder(
                     other_token_key,
                     other_token_txn_amt,
-                    other_desired_amount.load(),
+                    other_corresponding_amount.load(),
                 ),
                 mintAndSendPoolToken(
                     Txn.sender(),
