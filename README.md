@@ -17,7 +17,7 @@ with AMM. See that file for documentation.
 * Features:
     * "Minimum received" swaps
     * "Exact received" swaps
-    * Price range for supplying liquidity
+    * Price range for supplying/withdrawing liquidity
 * Maintenance
     * Simplify contract code
     * Tests

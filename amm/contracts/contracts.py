@@ -1,6 +1,26 @@
 from amm.contracts.helpers import *
 from amm.contracts.config import *
 
+
+def get_setup_program():
+    # if the amm has been set up, pool token id and outstanding value already exists
+    pool_token_id = App.globalGetEx(Global.current_application_id(), POOL_TOKEN_KEY)
+    pool_tokens_outstanding = App.globalGetEx(
+        Global.current_application_id(), POOL_TOKENS_OUTSTANDING_KEY
+    )
+    return Seq(
+        pool_token_id,
+        pool_tokens_outstanding,
+        # can only set up once
+        Assert(Not(pool_token_id.hasValue())),
+        Assert(Not(pool_tokens_outstanding.hasValue())),
+        createPoolToken(POOL_TOKEN_DEFAULT_AMOUNT),
+        optIn(TOKEN_A_KEY),
+        optIn(TOKEN_B_KEY),
+        Approve(),
+    )
+
+
 token_a_holding = AssetHolding.balance(
     Global.current_application_address(), App.globalGet(TOKEN_A_KEY)
 )
@@ -235,25 +255,6 @@ def approval_program():
     )
 
     return program
-
-
-def get_setup_program():
-    # if the amm has been set up already, pool token id and outstanding value exists
-    pool_token_id = App.globalGetEx(Global.current_application_id(), POOL_TOKEN_KEY)
-    pool_tokens_outstanding = App.globalGetEx(
-        Global.current_application_id(), POOL_TOKENS_OUTSTANDING_KEY
-    )
-    return Seq(
-        pool_token_id,
-        pool_tokens_outstanding,
-        # can only set up once
-        Assert(Not(pool_token_id.hasValue())),
-        Assert(Not(pool_tokens_outstanding.hasValue())),
-        createPoolToken(POOL_TOKEN_DEFAULT_AMOUNT),
-        optIn(TOKEN_A_KEY),
-        optIn(TOKEN_B_KEY),
-        Approve(),
-    )
 
 
 def clear_state_program():

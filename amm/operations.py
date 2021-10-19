@@ -59,7 +59,7 @@ def createAmmApp(
         client: An algod client.
         creator: The account that will create the amm application.
         tokenA: The id of token A in the liquidity pool,
-        tokenB: The id of token A in the liquidity pool,
+        tokenB: The id of token B in the liquidity pool,
         feeBps: The basis point fee to be charged per swap
 
     Returns:

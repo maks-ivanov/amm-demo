@@ -96,7 +96,7 @@ def tryTakeAdjustedAmounts(
 ) -> Expr:
     """
     Given supplied token amounts, try to keep all of one token and the corresponding amount of other token
-    as determined by market price before transaction. If desired amount is less than supplied, send the remainder back.
+    as determined by market price before transaction. If corresponding amount is less than supplied, send the remainder back.
     If successful, mint and sent pool tokens in proportion to new liquidity over old liquidity.
     """
     other_corresponding_amount = ScratchVar(TealType.uint64)
