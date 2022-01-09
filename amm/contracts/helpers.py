@@ -263,9 +263,15 @@ def getD(
                 Dprev.store(D.load()),
                 D.store(
                     WideRatio(
-                        [(Ann * S / SCALING_FACTOR + D_P.load() * n_coins), D.load()],
                         [
-                            (Ann - SCALING_FACTOR) * D.load() / SCALING_FACTOR
+                            WideRatio([Ann, S], [SCALING_FACTOR])
+                            + D_P.load() * n_coins,
+                            D.load(),
+                        ],
+                        [
+                            WideRatio(
+                                [Ann - SCALING_FACTOR, D.load()], [SCALING_FACTOR]
+                            )
                             + (n_coins + Int(1)) * D_P.load()
                         ],
                     )
@@ -293,22 +299,31 @@ def computeOtherTokenOutputStableSwap(
     D = App.globalGet(D_KEY)
     Ann = amplification_param * Exp(n_tokens, n_tokens)
     S = given_token_total
-    b = S + D * SCALING_FACTOR / Ann
+    b = S + WideRatio([D, SCALING_FACTOR], [Ann])
     c = WideRatio(
-        [D, D, D, SCALING_FACTOR],
+        [D, D, D],
         [given_token_total, Ann, Exp(n_tokens, n_tokens)],
     )
-
 
     new_other_token_total_estimate = ScratchVar(TealType.uint64)
 
     new_other_token_total_estimate_prev = ScratchVar(TealType.uint64)
     i = ScratchVar(TealType.uint64)
+
     ret = Return(
         assessFee(
             previous_other_token_total - new_other_token_total_estimate.load(), fee_bps
         )
     )
+
+    # new_other_token_total_estimate.store(
+    #     (
+    #             new_other_token_total_estimate.load()
+    #             * new_other_token_total_estimate.load()
+    #             + c
+    #     )
+    #     / (Int(2) * new_other_token_total_estimate.load() + b - D)
+    # )
 
     calc = Seq(
         new_other_token_total_estimate.store(D),
@@ -318,12 +333,27 @@ def computeOtherTokenOutputStableSwap(
                     new_other_token_total_estimate.load()
                 ),
                 new_other_token_total_estimate.store(
-                    (
-                        new_other_token_total_estimate.load()
-                        * new_other_token_total_estimate.load()
-                        + c
+                    WideRatio(
+                        [
+                            new_other_token_total_estimate.load(),
+                            new_other_token_total_estimate.load(),
+                        ],
+                        [
+                            Int(2),
+                            new_other_token_total_estimate.load()
+                            + b / Int(2)
+                            - D / Int(2),
+                        ],
                     )
-                    / (Int(2) * new_other_token_total_estimate.load() + b - D)
+                    + WideRatio(
+                        [c, SCALING_FACTOR],  # TODO explain this
+                        [
+                            Int(2),
+                            new_other_token_total_estimate.load()
+                            + b / Int(2)
+                            - D / Int(2),
+                        ],
+                    )
                 ),
                 If(
                     new_other_token_total_estimate.load()

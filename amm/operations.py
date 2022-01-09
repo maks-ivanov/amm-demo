@@ -230,14 +230,17 @@ def supply(
         sp=suggestedParams,
     )
 
-    dummyTxn = transaction.ApplicationCallTxn(
-        sender=supplier.getAddress(),
-        index=appID,
-        on_complete=transaction.OnComplete.NoOpOC,
-        app_args=[b"dummy"],
-        foreign_assets=[tokenA, tokenB, poolToken],
-        sp=suggestedParams,
-    )
+    dummyTxns = [
+        transaction.ApplicationCallTxn(
+            sender=supplier.getAddress(),
+            index=appID,
+            on_complete=transaction.OnComplete.NoOpOC,
+            app_args=[b"dummy"],
+            note=str(random.random() * time.time()),
+            sp=suggestedParams,
+        )
+        for _ in range(3)
+    ]
 
     appCallTxn = transaction.ApplicationCallTxn(
         sender=supplier.getAddress(),
@@ -248,17 +251,17 @@ def supply(
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([dummyTxn, feeTxn, tokenATxn, tokenBTxn, appCallTxn])
+    transaction.assign_group_id(dummyTxns + [feeTxn, tokenATxn, tokenBTxn, appCallTxn])
 
-    signedDummyTxn = dummyTxn.sign(supplier.getPrivateKey())
+    signedDummyTxns = [t.sign(supplier.getPrivateKey()) for t in dummyTxns]
     signedFeeTxn = feeTxn.sign(supplier.getPrivateKey())
     signedTokenATxn = tokenATxn.sign(supplier.getPrivateKey())
     signedTokenBTxn = tokenBTxn.sign(supplier.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(supplier.getPrivateKey())
 
     client.send_transactions(
-        [
-            signedDummyTxn,
+        signedDummyTxns
+        + [
             signedFeeTxn,
             signedTokenATxn,
             signedTokenBTxn,
