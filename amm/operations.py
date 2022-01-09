@@ -1,3 +1,5 @@
+import random
+import time
 from typing import Tuple
 
 from algosdk.v2client.algod import AlgodClient
@@ -228,6 +230,15 @@ def supply(
         sp=suggestedParams,
     )
 
+    dummyTxn = transaction.ApplicationCallTxn(
+        sender=supplier.getAddress(),
+        index=appID,
+        on_complete=transaction.OnComplete.NoOpOC,
+        app_args=[b"dummy"],
+        foreign_assets=[tokenA, tokenB, poolToken],
+        sp=suggestedParams,
+    )
+
     appCallTxn = transaction.ApplicationCallTxn(
         sender=supplier.getAddress(),
         index=appID,
@@ -237,14 +248,22 @@ def supply(
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([feeTxn, tokenATxn, tokenBTxn, appCallTxn])
+    transaction.assign_group_id([dummyTxn, feeTxn, tokenATxn, tokenBTxn, appCallTxn])
+
+    signedDummyTxn = dummyTxn.sign(supplier.getPrivateKey())
     signedFeeTxn = feeTxn.sign(supplier.getPrivateKey())
     signedTokenATxn = tokenATxn.sign(supplier.getPrivateKey())
     signedTokenBTxn = tokenBTxn.sign(supplier.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(supplier.getPrivateKey())
 
     client.send_transactions(
-        [signedFeeTxn, signedTokenATxn, signedTokenBTxn, signedAppCallTxn]
+        [
+            signedDummyTxn,
+            signedFeeTxn,
+            signedTokenATxn,
+            signedTokenBTxn,
+            signedAppCallTxn,
+        ]
     )
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
@@ -286,6 +305,14 @@ def withdraw(
         sp=suggestedParams,
     )
 
+    dummyTxn = transaction.ApplicationCallTxn(
+        sender=withdrawAccount.getAddress(),
+        index=appID,
+        on_complete=transaction.OnComplete.NoOpOC,
+        app_args=[b"dummy"],
+        sp=suggestedParams,
+    )
+
     appCallTxn = transaction.ApplicationCallTxn(
         sender=withdrawAccount.getAddress(),
         index=appID,
@@ -295,12 +322,15 @@ def withdraw(
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([feeTxn, poolTokenTxn, appCallTxn])
+    transaction.assign_group_id([dummyTxn, feeTxn, poolTokenTxn, appCallTxn])
+    signedDummyTxn = dummyTxn.sign(withdrawAccount.getPrivateKey())
     signedFeeTxn = feeTxn.sign(withdrawAccount.getPrivateKey())
     signedPoolTokenTxn = poolTokenTxn.sign(withdrawAccount.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(withdrawAccount.getPrivateKey())
 
-    client.send_transactions([signedFeeTxn, signedPoolTokenTxn, signedAppCallTxn])
+    client.send_transactions(
+        [signedDummyTxn, signedFeeTxn, signedPoolTokenTxn, signedAppCallTxn]
+    )
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
 
@@ -324,6 +354,18 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
     tokenA = appGlobalState[b"token_a_key"]
     tokenB = appGlobalState[b"token_b_key"]
 
+    dummyTxns = [
+        transaction.ApplicationCallTxn(
+            sender=trader.getAddress(),
+            index=appID,
+            on_complete=transaction.OnComplete.NoOpOC,
+            app_args=[b"dummy"],
+            note=str(random.random() * time.time()),
+            sp=suggestedParams,
+        )
+        for _ in range(3)
+    ]
+
     tradeTxn = transaction.AssetTransferTxn(
         sender=trader.getAddress(),
         receiver=appAddr,
@@ -341,12 +383,15 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([feeTxn, tradeTxn, appCallTxn])
+    transaction.assign_group_id(dummyTxns + [feeTxn, tradeTxn, appCallTxn])
+    signedDummyTxns = [t.sign(trader.getPrivateKey()) for t in dummyTxns]
     signedFeeTxn = feeTxn.sign(trader.getPrivateKey())
     signedTradeTxn = tradeTxn.sign(trader.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(trader.getPrivateKey())
 
-    client.send_transactions([signedFeeTxn, signedTradeTxn, signedAppCallTxn])
+    client.send_transactions(
+        signedDummyTxns + [signedFeeTxn, signedTradeTxn, signedAppCallTxn]
+    )
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
 

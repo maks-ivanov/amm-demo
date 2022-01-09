@@ -73,7 +73,7 @@ def simple_amm():
     optInToPoolToken(client, appID, creator)
 
     print("Supplying AMM with initial token A and token B")
-    supply(client=client, appID=appID, qA=500_000, qB=100_000_000, supplier=creator)
+    supply(client=client, appID=appID, qA=int(5e5), qB=int(5e5), supplier=creator)
     ammBalancesSupplied = getBalances(client, get_application_address(appID))
     creatorBalancesSupplied = getBalances(client, creator.getAddress())
     poolTokenFirstAmount = creatorBalancesSupplied[poolToken]
@@ -105,7 +105,7 @@ def simple_amm():
     poolTokenTotalAmount = creatorBalancesSupplied[poolToken]
     print(" ")
     print("Alice is exchanging her Token A for Token B")
-    swap(client=client, appID=appID, tokenId=tokenA, amount=1_000, trader=creator)
+    swap(client=client, appID=appID, tokenId=tokenA, amount=200_000, trader=creator)
     ammBalancesTraded = getBalances(client, get_application_address(appID))
     creatorBalancesTraded = getBalances(client, creator.getAddress())
     print("AMM's balances: ", ammBalancesTraded)

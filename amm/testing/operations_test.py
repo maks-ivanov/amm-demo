@@ -205,10 +205,10 @@ def test_withdraw():
     optInToPoolToken(client, appID, creator)
     supply(client, appID, 1000, 2000, creator)
     initialPoolTokensOutstanding = int(sqrt(1000 * 2000))
-
+    breakpoint()
     # return one third of pool tokens to the pool, keep two thirds
     withdraw(client, appID, initialPoolTokensOutstanding // 3, creator)
-
+    breakpoint()
     firstPoolTokens = getBalances(client, creator.getAddress())[poolToken]
     expectedPoolTokens = (
         initialPoolTokensOutstanding - initialPoolTokensOutstanding // 3
@@ -283,6 +283,7 @@ def test_swap():
 
     x = 2_000_000
     swap(client, appID, tokenA, x, creator)
+    breakpoint()
     initialProduct = m * n
     expectedReceivedTokenB = n - initialProduct // (m + (100_00 - feeBps) * x // 100_00)
 
@@ -300,6 +301,7 @@ def test_swap():
     mSecond, nSecond = poolBalances[tokenA], poolBalances[tokenB]
     y = x * 2
     swap(client, appID, tokenB, y, creator)
+    breakpoint()
     expectedReceivedTokenA = mSecond - actualNewProduct // (
         nSecond + (100_00 - feeBps) * y // 100_00
     )
