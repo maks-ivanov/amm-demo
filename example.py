@@ -32,8 +32,8 @@ def simple_amm():
     supplier = getTemporaryAccount(client)
 
     print("Alice is generating example tokens...")
-    tokenAAmount = 10 ** 13
-    tokenBAmount = 10 ** 13
+    tokenAAmount = 10 ** 19
+    tokenBAmount = 10 ** 19
     tokenA = createDummyAsset(client, tokenBAmount, creator)
     tokenB = createDummyAsset(client, tokenBAmount, creator)
     print("TokenA id is:", tokenA)
@@ -73,7 +73,7 @@ def simple_amm():
     optInToPoolToken(client, appID, creator)
 
     print("Supplying AMM with initial token A and token B")
-    supply(client=client, appID=appID, qA=int(1e12), qB=int(1e12), supplier=creator)
+    supply(client=client, appID=appID, qA=int(1e14), qB=int(1e14), supplier=creator)
     ammBalancesSupplied = getBalances(client, get_application_address(appID))
     creatorBalancesSupplied = getBalances(client, creator.getAddress())
     poolTokenFirstAmount = creatorBalancesSupplied[poolToken]
@@ -99,6 +99,7 @@ def simple_amm():
     supply(client=client, appID=appID, qA=100_000, qB=100_000_000, supplier=creator)
     ammBalancesSupplied = getBalances(client, get_application_address(appID))
     creatorBalancesSupplied = getBalances(client, creator.getAddress())
+    # breakpoint()
 
     print("AMM's balances: ", ammBalancesSupplied)
     print("Alice's balances: ", creatorBalancesSupplied)
@@ -116,7 +117,7 @@ def simple_amm():
         client=client,
         appID=appID,
         tokenId=tokenB,
-        amount=int(5e11 / .97),
+        amount=int(5e11 / 0.97),
         trader=creator,
     )
     ammBalancesTraded = getBalances(client, get_application_address(appID))

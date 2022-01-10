@@ -21,7 +21,7 @@ CLEAR_STATE_PROGRAM = b""
 
 MIN_BALANCE_REQUIREMENT = (
     # min account balance
-    100_000
+    1_000_000
     # additional min balance for 3 assets
     + 100_000 * 3
 )
@@ -70,7 +70,7 @@ def createAmmApp(
     approval, clear = getContracts(client)
 
     # tokenA, tokenB, poolToken, fee
-    globalSchema = transaction.StateSchema(num_uints=7, num_byte_slices=1)
+    globalSchema = transaction.StateSchema(num_uints=17, num_byte_slices=1)
     localSchema = transaction.StateSchema(num_uints=0, num_byte_slices=0)
 
     app_args = [
@@ -239,7 +239,7 @@ def supply(
             note=str(random.random() * time.time()),
             sp=suggestedParams,
         )
-        for _ in range(3)
+        for _ in range(5)
     ]
 
     appCallTxn = transaction.ApplicationCallTxn(
@@ -308,13 +308,17 @@ def withdraw(
         sp=suggestedParams,
     )
 
-    dummyTxn = transaction.ApplicationCallTxn(
-        sender=withdrawAccount.getAddress(),
-        index=appID,
-        on_complete=transaction.OnComplete.NoOpOC,
-        app_args=[b"dummy"],
-        sp=suggestedParams,
-    )
+    dummyTxns = [
+        transaction.ApplicationCallTxn(
+            sender=withdrawAccount.getAddress(),
+            index=appID,
+            on_complete=transaction.OnComplete.NoOpOC,
+            app_args=[b"dummy"],
+            sp=suggestedParams,
+            note=str(i * random.random()),
+        )
+        for i in range(5)
+    ]
 
     appCallTxn = transaction.ApplicationCallTxn(
         sender=withdrawAccount.getAddress(),
@@ -325,14 +329,14 @@ def withdraw(
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([dummyTxn, feeTxn, poolTokenTxn, appCallTxn])
-    signedDummyTxn = dummyTxn.sign(withdrawAccount.getPrivateKey())
+    transaction.assign_group_id(dummyTxns + [feeTxn, poolTokenTxn, appCallTxn])
+    signedDummyTxns = [t.sign(withdrawAccount.getPrivateKey()) for t in dummyTxns]
     signedFeeTxn = feeTxn.sign(withdrawAccount.getPrivateKey())
     signedPoolTokenTxn = poolTokenTxn.sign(withdrawAccount.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(withdrawAccount.getPrivateKey())
 
     client.send_transactions(
-        [signedDummyTxn, signedFeeTxn, signedPoolTokenTxn, signedAppCallTxn]
+        signedDummyTxns + [signedFeeTxn, signedPoolTokenTxn, signedAppCallTxn]
     )
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
@@ -346,6 +350,7 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
     appAddr = get_application_address(appID)
     appGlobalState = getAppGlobalState(client, appID)
     suggestedParams = client.suggested_params()
+    suggestedParams.fee += 1000
 
     feeTxn = transaction.PaymentTxn(
         sender=trader.getAddress(),
@@ -366,7 +371,7 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
             note=str(random.random() * time.time()),
             sp=suggestedParams,
         )
-        for _ in range(3)
+        for _ in range(13)
     ]
 
     tradeTxn = transaction.AssetTransferTxn(
@@ -386,15 +391,12 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id(dummyTxns + [feeTxn, tradeTxn, appCallTxn])
+    transaction.assign_group_id(dummyTxns + [tradeTxn, appCallTxn])
     signedDummyTxns = [t.sign(trader.getPrivateKey()) for t in dummyTxns]
-    signedFeeTxn = feeTxn.sign(trader.getPrivateKey())
     signedTradeTxn = tradeTxn.sign(trader.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(trader.getPrivateKey())
 
-    client.send_transactions(
-        signedDummyTxns + [signedFeeTxn, signedTradeTxn, signedAppCallTxn]
-    )
+    client.send_transactions(signedDummyTxns + [signedTradeTxn, signedAppCallTxn])
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
 

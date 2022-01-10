@@ -9,5 +9,5 @@ MIN_INCREMENT_KEY = Bytes("min_increment_key")
 POOL_TOKENS_OUTSTANDING_KEY = Bytes("pool_tokens_outstanding_key")
 SCALING_FACTOR = Int(10 ** 9)
 AMP_FACTOR = Int(25) * SCALING_FACTOR
-POOL_TOKEN_DEFAULT_AMOUNT = Int(10 ** 13)
+POOL_TOKEN_DEFAULT_AMOUNT = Int(10 ** 19)
 D_KEY = Bytes("D")

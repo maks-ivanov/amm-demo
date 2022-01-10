@@ -25,7 +25,7 @@ def validateTokenReceived(
 
 @Subroutine(TealType.uint64)
 def xMulYDivZ(x, y, z) -> Expr:
-    return WideRatio([x, y, SCALING_FACTOR], [z, SCALING_FACTOR])
+    return WideRatio([x, y], [z])
 
 
 @Subroutine(TealType.none)
@@ -227,7 +227,6 @@ def getD(
     amplification_param: TealType.uint64,
 ):
     """
-    WARNING: this is likely not safe from overflow
     StableSwap two tokens implementation
     D invariant calculation in non-overflowing integer operations
     iteratively
@@ -238,47 +237,45 @@ def getD(
     n_coins = Int(2)
     S = tokenA_amount + tokenB_amount
     D = ScratchVar(TealType.uint64)
-    D_P = ScratchVar(TealType.uint64)
+    D_bytes = Itob(D.load())
+
+    D_P_num = BytesMul(D_bytes, BytesMul(D_bytes, D_bytes))
+    D_P_denom = BytesMul(
+        Itob(Exp(n_coins, n_coins)), BytesMul(Itob(tokenB_amount), Itob(tokenA_amount))
+    )
+    D_prod = BytesDiv(D_P_num, D_P_denom)
 
     Ann = amplification_param * Exp(n_coins, n_coins)  # TODO
+
+    D_estimate_num = BytesMul(
+        BytesAdd(
+            BytesDiv(BytesMul(Itob(Ann), Itob(S)), Itob(SCALING_FACTOR)),
+            BytesMul(D_prod, Itob(n_coins)),
+        ),
+        D_bytes,
+    )
+
+    D_estimate_denom = BytesAdd(
+        BytesDiv(BytesMul(Itob(Ann - SCALING_FACTOR), Itob(D.load())), Itob(SCALING_FACTOR)),
+        BytesMul(D_bytes, Itob(n_coins + Int(1))),
+    )
+
+    D_estimate_calc = Btoi(BytesDiv(D_estimate_num, D_estimate_denom))
+
     i = ScratchVar(TealType.uint64)
 
-    Dprev = ScratchVar(TealType.uint64)
-    # TODO fee adjustment
+    D_prev = ScratchVar(TealType.uint64)
+
     calc = Seq(
         If(S == Int(0)).Then(Return(S)),
         D.store(S),
         For(i.store(Int(0)), i.load() < Int(255), i.store(i.load() + Int(1))).Do(
             Seq(
-                D_P.store(
-                    WideRatio(
-                        [
-                            D.load(),
-                            D.load(),
-                            D.load(),
-                        ],  # D ** (n+1); Exp can and does overflow, so here we are.
-                        [Exp(n_coins, n_coins), tokenA_amount, tokenB_amount],
-                    )
-                ),
-                Dprev.store(D.load()),
-                D.store(
-                    WideRatio(
-                        [
-                            WideRatio([Ann, S], [SCALING_FACTOR])
-                            + D_P.load() * n_coins,
-                            D.load(),
-                        ],
-                        [
-                            WideRatio(
-                                [Ann - SCALING_FACTOR, D.load()], [SCALING_FACTOR]
-                            )
-                            + (n_coins + Int(1)) * D_P.load()
-                        ],
-                    )
-                ),
-                If(D.load() > Dprev.load())
-                .Then(If(D.load() - Dprev.load() <= Int(1)).Then(Return(D.load())))
-                .Else(If(Dprev.load() - D.load() <= Int(1)).Then(Return(D.load()))),
+                D_prev.store(D.load()),
+                D.store(D_estimate_calc),
+                If(D.load() > D_prev.load())
+                .Then(If(D.load() - D_prev.load() <= Int(1)).Then(Return(D.load())))
+                .Else(If(D_prev.load() - D.load() <= Int(1)).Then(Return(D.load()))),
             )
         ),
         Assert(i.load() < Int(255)),  # did not converge, throw error
@@ -300,13 +297,15 @@ def computeOtherTokenOutputStableSwap(
     Ann = amplification_param * Exp(n_tokens, n_tokens)
     S = given_token_total
     b = S + WideRatio([D, SCALING_FACTOR], [Ann])
-    c = WideRatio(
-        [D, D, D],
-        [given_token_total, Ann, Exp(n_tokens, n_tokens)],
+
+    c = BytesDiv(
+        BytesMul(Itob(D), BytesMul(Itob(D), BytesMul(Itob(D), Itob(SCALING_FACTOR)))),
+        BytesMul(
+            Itob(given_token_total), BytesMul(Itob(Ann), Itob(Exp(n_tokens, n_tokens)))
+        ),
     )
 
     new_other_token_total_estimate = ScratchVar(TealType.uint64)
-
     new_other_token_total_estimate_prev = ScratchVar(TealType.uint64)
     i = ScratchVar(TealType.uint64)
 
@@ -316,14 +315,16 @@ def computeOtherTokenOutputStableSwap(
         )
     )
 
-    # new_other_token_total_estimate.store(
-    #     (
-    #             new_other_token_total_estimate.load()
-    #             * new_other_token_total_estimate.load()
-    #             + c
-    #     )
-    #     / (Int(2) * new_other_token_total_estimate.load() + b - D)
-    # )
+    estimate_num = BytesAdd(
+        BytesMul(
+            Itob(new_other_token_total_estimate.load()),
+            Itob(new_other_token_total_estimate.load()),
+        ),
+        c,
+    )
+
+    estimate_denom = Itob(Int(2) * new_other_token_total_estimate.load() + b - D)
+    estimate_calc = Btoi(BytesDiv(estimate_num, estimate_denom))
 
     calc = Seq(
         new_other_token_total_estimate.store(D),
@@ -332,29 +333,7 @@ def computeOtherTokenOutputStableSwap(
                 new_other_token_total_estimate_prev.store(
                     new_other_token_total_estimate.load()
                 ),
-                new_other_token_total_estimate.store(
-                    WideRatio(
-                        [
-                            new_other_token_total_estimate.load(),
-                            new_other_token_total_estimate.load(),
-                        ],
-                        [
-                            Int(2),
-                            new_other_token_total_estimate.load()
-                            + b / Int(2)
-                            - D / Int(2),
-                        ],
-                    )
-                    + WideRatio(
-                        [c, SCALING_FACTOR],  # TODO explain this
-                        [
-                            Int(2),
-                            new_other_token_total_estimate.load()
-                            + b / Int(2)
-                            - D / Int(2),
-                        ],
-                    )
-                ),
+                new_other_token_total_estimate.store(estimate_calc),
                 If(
                     new_other_token_total_estimate.load()
                     > new_other_token_total_estimate_prev.load()
