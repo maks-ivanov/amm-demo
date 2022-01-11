@@ -1,3 +1,5 @@
+import random
+import time
 from typing import Tuple
 
 from algosdk.v2client.algod import AlgodClient
@@ -19,7 +21,7 @@ CLEAR_STATE_PROGRAM = b""
 
 MIN_BALANCE_REQUIREMENT = (
     # min account balance
-    100_000
+    1_000_000
     # additional min balance for 3 assets
     + 100_000 * 3
 )
@@ -68,7 +70,7 @@ def createAmmApp(
     approval, clear = getContracts(client)
 
     # tokenA, tokenB, poolToken, fee
-    globalSchema = transaction.StateSchema(num_uints=7, num_byte_slices=1)
+    globalSchema = transaction.StateSchema(num_uints=17, num_byte_slices=1)
     localSchema = transaction.StateSchema(num_uints=0, num_byte_slices=0)
 
     app_args = [
@@ -228,6 +230,18 @@ def supply(
         sp=suggestedParams,
     )
 
+    dummyTxns = [
+        transaction.ApplicationCallTxn(
+            sender=supplier.getAddress(),
+            index=appID,
+            on_complete=transaction.OnComplete.NoOpOC,
+            app_args=[b"dummy"],
+            note=str(random.random() * time.time()),
+            sp=suggestedParams,
+        )
+        for _ in range(5)
+    ]
+
     appCallTxn = transaction.ApplicationCallTxn(
         sender=supplier.getAddress(),
         index=appID,
@@ -237,14 +251,22 @@ def supply(
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([feeTxn, tokenATxn, tokenBTxn, appCallTxn])
+    transaction.assign_group_id(dummyTxns + [feeTxn, tokenATxn, tokenBTxn, appCallTxn])
+
+    signedDummyTxns = [t.sign(supplier.getPrivateKey()) for t in dummyTxns]
     signedFeeTxn = feeTxn.sign(supplier.getPrivateKey())
     signedTokenATxn = tokenATxn.sign(supplier.getPrivateKey())
     signedTokenBTxn = tokenBTxn.sign(supplier.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(supplier.getPrivateKey())
 
     client.send_transactions(
-        [signedFeeTxn, signedTokenATxn, signedTokenBTxn, signedAppCallTxn]
+        signedDummyTxns
+        + [
+            signedFeeTxn,
+            signedTokenATxn,
+            signedTokenBTxn,
+            signedAppCallTxn,
+        ]
     )
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
@@ -286,6 +308,18 @@ def withdraw(
         sp=suggestedParams,
     )
 
+    dummyTxns = [
+        transaction.ApplicationCallTxn(
+            sender=withdrawAccount.getAddress(),
+            index=appID,
+            on_complete=transaction.OnComplete.NoOpOC,
+            app_args=[b"dummy"],
+            sp=suggestedParams,
+            note=str(i * random.random()),
+        )
+        for i in range(5)
+    ]
+
     appCallTxn = transaction.ApplicationCallTxn(
         sender=withdrawAccount.getAddress(),
         index=appID,
@@ -295,12 +329,15 @@ def withdraw(
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([feeTxn, poolTokenTxn, appCallTxn])
+    transaction.assign_group_id(dummyTxns + [feeTxn, poolTokenTxn, appCallTxn])
+    signedDummyTxns = [t.sign(withdrawAccount.getPrivateKey()) for t in dummyTxns]
     signedFeeTxn = feeTxn.sign(withdrawAccount.getPrivateKey())
     signedPoolTokenTxn = poolTokenTxn.sign(withdrawAccount.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(withdrawAccount.getPrivateKey())
 
-    client.send_transactions([signedFeeTxn, signedPoolTokenTxn, signedAppCallTxn])
+    client.send_transactions(
+        signedDummyTxns + [signedFeeTxn, signedPoolTokenTxn, signedAppCallTxn]
+    )
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
 
@@ -313,6 +350,7 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
     appAddr = get_application_address(appID)
     appGlobalState = getAppGlobalState(client, appID)
     suggestedParams = client.suggested_params()
+    suggestedParams.fee += 1000
 
     feeTxn = transaction.PaymentTxn(
         sender=trader.getAddress(),
@@ -323,6 +361,18 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
 
     tokenA = appGlobalState[b"token_a_key"]
     tokenB = appGlobalState[b"token_b_key"]
+
+    dummyTxns = [
+        transaction.ApplicationCallTxn(
+            sender=trader.getAddress(),
+            index=appID,
+            on_complete=transaction.OnComplete.NoOpOC,
+            app_args=[b"dummy"],
+            note=str(random.random() * time.time()),
+            sp=suggestedParams,
+        )
+        for _ in range(13)
+    ]
 
     tradeTxn = transaction.AssetTransferTxn(
         sender=trader.getAddress(),
@@ -341,12 +391,12 @@ def swap(client: AlgodClient, appID: int, tokenId: int, amount: int, trader: Acc
         sp=suggestedParams,
     )
 
-    transaction.assign_group_id([feeTxn, tradeTxn, appCallTxn])
-    signedFeeTxn = feeTxn.sign(trader.getPrivateKey())
+    transaction.assign_group_id(dummyTxns + [tradeTxn, appCallTxn])
+    signedDummyTxns = [t.sign(trader.getPrivateKey()) for t in dummyTxns]
     signedTradeTxn = tradeTxn.sign(trader.getPrivateKey())
     signedAppCallTxn = appCallTxn.sign(trader.getPrivateKey())
 
-    client.send_transactions([signedFeeTxn, signedTradeTxn, signedAppCallTxn])
+    client.send_transactions(signedDummyTxns + [signedTradeTxn, signedAppCallTxn])
     waitForTransaction(client, signedAppCallTxn.get_txid())
 
 

@@ -71,13 +71,15 @@ def get_supply_program():
         .Then(
             # no liquidity yet, take everything
             Seq(
-                mintAndSendPoolToken(
-                    Txn.sender(),
-                    Sqrt(
-                        Gtxn[token_a_txn_index].asset_amount()
-                        * Gtxn[token_b_txn_index].asset_amount()
+                App.globalPut(
+                    D_KEY,
+                    getD(
+                        Gtxn[token_a_txn_index].asset_amount(),
+                        Gtxn[token_b_txn_index].asset_amount(),
+                        AMP_FACTOR,
                     ),
                 ),
+                mintAndSendPoolToken(Txn.sender(), App.globalGet(D_KEY)),
                 Approve(),
             ),
         )
@@ -90,7 +92,17 @@ def get_supply_program():
                 token_b_before_txn.load(),
             )
         )
-        .Then(Approve())
+        .Then(
+            Seq(
+                token_a_holding,
+                token_b_holding,
+                App.globalPut(
+                    D_KEY,
+                    getD(token_a_holding.value(), token_b_holding.value(), AMP_FACTOR),
+                ),
+                Approve(),
+            )
+        )
         .ElseIf(
             tryTakeAdjustedAmounts(
                 Gtxn[token_b_txn_index].asset_amount(),
@@ -100,7 +112,17 @@ def get_supply_program():
                 token_a_before_txn.load(),
             ),
         )
-        .Then(Approve())
+        .Then(
+            Seq(
+                token_a_holding,
+                token_b_holding,
+                App.globalPut(
+                    D_KEY,
+                    getD(token_a_holding.value(), token_b_holding.value(), AMP_FACTOR),
+                ),
+                Approve(),
+            )
+        )
         .Else(Reject()),
     )
     return on_supply
@@ -138,6 +160,12 @@ def get_withdraw_program():
                     POOL_TOKENS_OUTSTANDING_KEY,
                     App.globalGet(POOL_TOKENS_OUTSTANDING_KEY)
                     - Gtxn[pool_token_txn_index].asset_amount(),
+                ),
+                token_a_holding,
+                token_b_holding,
+                App.globalPut(
+                    D_KEY,
+                    getD(token_a_holding.value(), token_b_holding.value(), AMP_FACTOR),
                 ),
                 Approve(),
             ),
@@ -190,11 +218,11 @@ def get_swap_program():
         )
         .Else(Reject()),
         to_send_amount.store(
-            computeOtherTokenOutputPerGivenTokenInput(
-                Gtxn[on_swap_txn_index].asset_amount(),
-                given_token_amt_before_txn.load(),
+            computeOtherTokenOutputStableSwap(
+                given_token_amt_before_txn.load()
+                + assessFee(Gtxn[on_swap_txn_index].asset_amount(), App.globalGet(FEE_BPS_KEY)),
                 other_token_amt_before_txn.load(),
-                App.globalGet(FEE_BPS_KEY),
+                AMP_FACTOR,
             )
         ),
         Assert(
@@ -204,6 +232,11 @@ def get_swap_program():
             )
         ),
         sendToken(to_send_key.load(), Txn.sender(), to_send_amount.load()),
+        token_a_holding,
+        token_b_holding,
+        App.globalPut(
+            D_KEY, getD(token_a_holding.value(), token_b_holding.value(), AMP_FACTOR)
+        ),
         Approve(),
     )
 
@@ -231,6 +264,7 @@ def approval_program():
         [on_call_method == Bytes("supply"), on_supply],
         [on_call_method == Bytes("withdraw"), on_withdraw],
         [on_call_method == Bytes("swap"), on_swap],
+        [on_call_method == Bytes("dummy"), Approve()],
     )
 
     on_delete = Seq(
