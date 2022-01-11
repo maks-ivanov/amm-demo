@@ -220,9 +220,8 @@ def get_swap_program():
         to_send_amount.store(
             computeOtherTokenOutputStableSwap(
                 given_token_amt_before_txn.load()
-                + Gtxn[on_swap_txn_index].asset_amount(),
+                + assessFee(Gtxn[on_swap_txn_index].asset_amount(), App.globalGet(FEE_BPS_KEY)),
                 other_token_amt_before_txn.load(),
-                App.globalGet(FEE_BPS_KEY),
                 AMP_FACTOR,
             )
         ),

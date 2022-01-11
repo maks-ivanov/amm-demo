@@ -151,7 +151,7 @@ def simple_amm():
     ammBalancesWithdrawn = getBalances(client, get_application_address(appID))
     print("AMM's balances: ", ammBalancesWithdrawn)
     print("Closing AMM")
-    closeAmm(client=client, appID=appID, closer=creator)
+    #closeAmm(client=client, appID=appID, closer=creator)
 
 
 simple_amm()

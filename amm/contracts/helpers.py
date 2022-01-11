@@ -289,9 +289,16 @@ def getD(
 def computeOtherTokenOutputStableSwap(
     given_token_total: TealType.uint64,
     previous_other_token_total: TealType.uint64,
-    fee_bps: TealType.uint64,
     amplification_param,
 ):
+    """
+    Calculate x[j] if one makes x[i] = x
+    Done by solving quadratic equation iteratively.
+    x_1**2 + x_1 * (sum' - (A*n**n - 1) * D / (A * n**n)) = D ** (n + 1) / (n ** (2 * n) * prod' * A)
+    x_1**2 + b*x_1 = c
+    x_1 = (x_1**2 + c) / (2*x_1 + b)
+    """
+
     n_tokens = Int(2)
     D = App.globalGet(D_KEY)
     Ann = amplification_param * Exp(n_tokens, n_tokens)
@@ -309,11 +316,7 @@ def computeOtherTokenOutputStableSwap(
     new_other_token_total_estimate_prev = ScratchVar(TealType.uint64)
     i = ScratchVar(TealType.uint64)
 
-    ret = Return(
-        assessFee(
-            previous_other_token_total - new_other_token_total_estimate.load(), fee_bps
-        )
-    )
+    ret = Return(previous_other_token_total - new_other_token_total_estimate.load())
 
     estimate_num = BytesAdd(
         BytesMul(
